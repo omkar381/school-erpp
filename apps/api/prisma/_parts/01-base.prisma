@@ -1,0 +1,509 @@
+// ===========================================================================
+//  SCHOOL ERP PLATFORM — PRISMA SCHEMA
+//  Multi-tenant (shared database, shared schema, discriminated by schoolId)
+//  PostgreSQL 16
+// ===========================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================================================
+//  ENUMS
+// ===========================================================================
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+  LOCKED
+}
+
+enum RoleType {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  PRINCIPAL
+  VICE_PRINCIPAL
+  TEACHER
+  ACCOUNTANT
+  LIBRARIAN
+  TRANSPORT_MANAGER
+  RECEPTIONIST
+  HR_MANAGER
+  STUDENT
+  PARENT
+  STAFF
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum BloodGroup {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+  UNKNOWN
+}
+
+enum SchoolStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+  EXPIRED
+  ARCHIVED
+}
+
+enum SubscriptionPlanTier {
+  BASIC
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  TRANSFERRED
+  ALUMNI
+  SUSPENDED
+  DROPPED
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  PROMOTED
+  DETAINED
+  TRANSFERRED
+  WITHDRAWN
+}
+
+enum GuardianRelation {
+  FATHER
+  MOTHER
+  GUARDIAN
+  GRANDFATHER
+  GRANDMOTHER
+  UNCLE
+  AUNT
+  SIBLING
+  OTHER
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  PROBATION
+  NOTICE_PERIOD
+  RESIGNED
+  TERMINATED
+  RETIRED
+  ON_LEAVE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  EXCUSED
+  HOLIDAY
+}
+
+enum AttendanceSessionType {
+  DAILY
+  SUBJECT
+  MORNING
+  AFTERNOON
+}
+
+enum StaffAttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  ON_LEAVE
+  HOLIDAY
+  WEEK_OFF
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum PeriodType {
+  CLASS
+  BREAK
+  LUNCH
+  ASSEMBLY
+  ACTIVITY
+}
+
+enum HomeworkStatus {
+  DRAFT
+  ASSIGNED
+  CLOSED
+  ARCHIVED
+}
+
+enum SubmissionStatus {
+  PENDING
+  SUBMITTED
+  LATE
+  REVIEWED
+  RESUBMIT
+  GRADED
+  MISSED
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  IMPORTANT
+  URGENT
+}
+
+enum ExamType {
+  UNIT_TEST
+  FORMATIVE_ASSESSMENT
+  SUMMATIVE_ASSESSMENT
+  MID_TERM
+  FINAL
+  PRE_BOARD
+  PRACTICAL
+  CUSTOM
+}
+
+enum ExamStatus {
+  DRAFT
+  SCHEDULED
+  ONGOING
+  MARKS_ENTRY
+  COMPLETED
+  PUBLISHED
+  CANCELLED
+}
+
+enum MarkStatus {
+  PENDING
+  ENTERED
+  LOCKED
+  PUBLISHED
+}
+
+enum FeeFrequency {
+  ONE_TIME
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  ANNUAL
+  CUSTOM
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+  VOID
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  CARD
+  NET_BANKING
+  CHEQUE
+  DEMAND_DRAFT
+  BANK_TRANSFER
+  ONLINE_GATEWAY
+  WALLET
+  ADJUSTMENT
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  CANCELLED
+}
+
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  PROCESSING
+  COMPLETED
+  REJECTED
+  FAILED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum LedgerEntryType {
+  INVOICE
+  PAYMENT
+  REFUND
+  DISCOUNT
+  LATE_FEE
+  ADJUSTMENT
+  WRITE_OFF
+  VOID
+}
+
+enum NoticeAudience {
+  ALL
+  TEACHERS
+  PARENTS
+  STUDENTS
+  STAFF
+  CLASS
+  SECTION
+  SPECIFIC_USERS
+}
+
+enum NoticeStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  EXPIRED
+  ARCHIVED
+}
+
+enum NotificationChannel {
+  IN_APP
+  PUSH
+  EMAIL
+  SMS
+}
+
+enum NotificationType {
+  GENERAL
+  ATTENDANCE
+  FEE
+  EXAM
+  RESULT
+  HOMEWORK
+  ASSIGNMENT
+  NOTICE
+  EVENT
+  MESSAGE
+  LEAVE
+  TRANSPORT
+  LIBRARY
+  SYSTEM
+  SUPPORT
+}
+
+enum DeliveryStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  SKIPPED
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+  ANNOUNCEMENT
+  SUPPORT
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  DOCUMENT
+  AUDIO
+  VIDEO
+  SYSTEM
+}
+
+enum LeaveApplicantType {
+  STUDENT
+  STAFF
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  CHANGES_REQUESTED
+}
+
+enum EventType {
+  ANNUAL_DAY
+  SPORTS_DAY
+  PARENT_MEETING
+  EXAM
+  HOLIDAY
+  COMPETITION
+  TRIP
+  WORKSHOP
+  CELEBRATION
+  OTHER
+}
+
+enum VehicleStatus {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+  RETIRED
+}
+
+enum TransportDirection {
+  PICKUP
+  DROP
+  BOTH
+}
+
+enum LibraryIssueStatus {
+  ISSUED
+  RETURNED
+  OVERDUE
+  LOST
+  DAMAGED
+  RENEWED
+}
+
+enum BookCopyStatus {
+  AVAILABLE
+  ISSUED
+  RESERVED
+  LOST
+  DAMAGED
+  WITHDRAWN
+}
+
+enum StockTransactionType {
+  STOCK_IN
+  STOCK_OUT
+  ADJUSTMENT
+  RETURN
+  DAMAGE
+  TRANSFER
+}
+
+enum DocumentOwnerType {
+  STUDENT
+  STAFF
+  SCHOOL
+  PARENT
+  CLASS
+  GENERIC
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  PASSWORD_CHANGE
+  PASSWORD_RESET
+  PAYMENT
+  REFUND
+  MARKS_UPDATE
+  MARKS_PUBLISH
+  ATTENDANCE_UPDATE
+  PERMISSION_CHANGE
+  ROLE_CHANGE
+  EXPORT
+  IMPORT
+  IMPERSONATE
+  APPROVE
+  REJECT
+  VOID
+}
+
+enum AdmissionEnquiryStatus {
+  NEW
+  CONTACTED
+  FOLLOW_UP
+  APPLIED
+  ADMITTED
+  REJECTED
+  LOST
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum CertificateType {
+  BONAFIDE
+  TRANSFER
+  CHARACTER
+  PARTICIPATION
+  ACHIEVEMENT
+  CUSTOM
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+  WEB
+}
+
+enum ComplaintStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}

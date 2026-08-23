@@ -1,0 +1,259 @@
+
+// ===========================================================================
+//  EXAMINATIONS
+// ===========================================================================
+
+model GradeScale {
+  id          String   @id @default(uuid()) @db.Uuid
+  schoolId    String   @db.Uuid
+  name        String
+  description String?
+  isDefault   Boolean  @default(false)
+  /// When true, grade is derived from percentage; otherwise from absolute marks
+  usePercentage Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  school      School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  bands       GradeBand[]
+  exams       Exam[]
+
+  @@unique([schoolId, name])
+  @@map("grade_scales")
+}
+
+model GradeBand {
+  id           String     @id @default(uuid()) @db.Uuid
+  gradeScaleId String     @db.Uuid
+  grade        String
+  minValue     Decimal    @db.Decimal(6, 2)
+  maxValue     Decimal    @db.Decimal(6, 2)
+  gradePoint   Decimal?   @db.Decimal(4, 2)
+  remark       String?
+  isPassing    Boolean    @default(true)
+  sortOrder    Int        @default(0)
+
+  gradeScale   GradeScale @relation(fields: [gradeScaleId], references: [id], onDelete: Cascade)
+
+  @@unique([gradeScaleId, grade])
+  @@index([gradeScaleId, sortOrder])
+  @@map("grade_bands")
+}
+
+model Exam {
+  id             String     @id @default(uuid()) @db.Uuid
+  schoolId       String     @db.Uuid
+  academicYearId String     @db.Uuid
+  gradeScaleId   String?    @db.Uuid
+
+  name           String
+  code           String
+  type           ExamType
+  description    String?
+  startDate      DateTime   @db.Date
+  endDate        DateTime   @db.Date
+  status         ExamStatus @default(DRAFT)
+  /// Contribution of this exam to the term/final aggregate
+  weightage      Decimal?   @db.Decimal(5, 2)
+  resultDate     DateTime?  @db.Date
+  publishedAt    DateTime?
+  publishedById  String?    @db.Uuid
+  marksLocked    Boolean    @default(false)
+  showRank       Boolean    @default(true)
+  instructions   String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  deletedAt      DateTime?
+
+  school         School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  gradeScale     GradeScale?   @relation(fields: [gradeScaleId], references: [id], onDelete: SetNull)
+  examClasses    ExamClass[]
+  examSubjects   ExamSubject[]
+  schedules      ExamSchedule[]
+  marks          Mark[]
+  reportCardExams ReportCardExam[]
+
+  @@unique([schoolId, academicYearId, code])
+  @@index([schoolId, status])
+  @@index([schoolId, startDate])
+  @@map("exams")
+}
+
+model ExamClass {
+  id        String   @id @default(uuid()) @db.Uuid
+  examId    String   @db.Uuid
+  classId   String   @db.Uuid
+  sectionId String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section   Section? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, classId, sectionId])
+  @@index([classId])
+  @@map("exam_classes")
+}
+
+model ExamSubject {
+  id           String   @id @default(uuid()) @db.Uuid
+  examId       String   @db.Uuid
+  classId      String   @db.Uuid
+  subjectId    String   @db.Uuid
+  maxMarks     Decimal  @default(100) @db.Decimal(8, 2)
+  passMarks    Decimal  @default(35) @db.Decimal(8, 2)
+  /// Practical component, if any
+  maxMarksPractical Decimal? @db.Decimal(8, 2)
+  passMarksPractical Decimal? @db.Decimal(8, 2)
+  isOptional   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  exam         Exam           @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject      Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  schedules    ExamSchedule[]
+  marks        Mark[]
+
+  @@unique([examId, classId, subjectId])
+  @@index([examId])
+  @@index([subjectId])
+  @@map("exam_subjects")
+}
+
+model ExamSchedule {
+  id            String   @id @default(uuid()) @db.Uuid
+  examId        String   @db.Uuid
+  examSubjectId String   @db.Uuid
+  sectionId     String?  @db.Uuid
+  roomId        String?  @db.Uuid
+  invigilatorId String?  @db.Uuid
+  date          DateTime @db.Date
+  startTime     String
+  endTime       String
+  durationMinutes Int?
+  instructions  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  exam          Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
+  examSubject   ExamSubject @relation(fields: [examSubjectId], references: [id], onDelete: Cascade)
+  room          Room?       @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  invigilator   Staff?      @relation("Invigilator", fields: [invigilatorId], references: [id], onDelete: SetNull)
+
+  @@unique([examSubjectId, sectionId])
+  @@index([examId, date])
+  @@map("exam_schedules")
+}
+
+model Mark {
+  id             String     @id @default(uuid()) @db.Uuid
+  examId         String     @db.Uuid
+  examSubjectId  String     @db.Uuid
+  studentId      String     @db.Uuid
+  subjectId      String     @db.Uuid
+
+  marksObtained  Decimal?   @db.Decimal(8, 2)
+  practicalMarks Decimal?   @db.Decimal(8, 2)
+  totalMarks     Decimal?   @db.Decimal(8, 2)
+  grade          String?
+  gradePoint     Decimal?   @db.Decimal(4, 2)
+  isAbsent       Boolean    @default(false)
+  isExempted     Boolean    @default(false)
+  remarks        String?
+  status         MarkStatus @default(PENDING)
+
+  enteredById    String?    @db.Uuid
+  enteredAt      DateTime?
+  lockedAt       DateTime?
+  publishedAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  exam           Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
+  examSubject    ExamSubject @relation(fields: [examSubjectId], references: [id], onDelete: Cascade)
+  student        Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject        Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  enteredBy      Staff?      @relation("MarkEnteredBy", fields: [enteredById], references: [id], onDelete: SetNull)
+  revisions      MarkRevision[]
+
+  @@unique([examSubjectId, studentId])
+  @@index([examId, studentId])
+  @@index([studentId])
+  @@index([examId, status])
+  @@map("marks")
+}
+
+/// Immutable trail of every change made to a mark after first entry.
+model MarkRevision {
+  id            String   @id @default(uuid()) @db.Uuid
+  markId        String   @db.Uuid
+  previousValue Json
+  newValue      Json
+  reason        String
+  changedById   String?  @db.Uuid
+  approvedById  String?  @db.Uuid
+  createdAt     DateTime @default(now())
+
+  mark          Mark     @relation(fields: [markId], references: [id], onDelete: Cascade)
+
+  @@index([markId])
+  @@map("mark_revisions")
+}
+
+model ReportCard {
+  id             String   @id @default(uuid()) @db.Uuid
+  schoolId       String   @db.Uuid
+  academicYearId String   @db.Uuid
+  studentId      String   @db.Uuid
+  classId        String   @db.Uuid
+  sectionId      String   @db.Uuid
+
+  /// Human label, e.g. "Term 1", "Annual"
+  term           String
+  totalMarks     Decimal? @db.Decimal(10, 2)
+  obtainedMarks  Decimal? @db.Decimal(10, 2)
+  percentage     Decimal? @db.Decimal(6, 3)
+  grade          String?
+  gradePoint     Decimal? @db.Decimal(4, 2)
+  rank           Int?
+  rankOutOf      Int?
+  result         String?
+  attendedDays   Int?
+  totalDays      Int?
+  attendancePercent Decimal? @db.Decimal(6, 3)
+  classTeacherRemarks String?
+  principalRemarks    String?
+  /// Denormalised snapshot of subject rows at generation time
+  snapshot       Json     @default("{}")
+  pdfStorageKey  String?
+  pdfUrl         String?
+  generatedAt    DateTime @default(now())
+  publishedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  school         School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class          Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section        Section      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  exams          ReportCardExam[]
+
+  @@unique([studentId, academicYearId, term])
+  @@index([schoolId, academicYearId, classId])
+  @@map("report_cards")
+}
+
+model ReportCardExam {
+  reportCardId String @db.Uuid
+  examId       String @db.Uuid
+  weightage    Decimal? @db.Decimal(5, 2)
+
+  reportCard   ReportCard @relation(fields: [reportCardId], references: [id], onDelete: Cascade)
+  exam         Exam       @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@id([reportCardId, examId])
+  @@index([examId])
+  @@map("report_card_exams")
+}

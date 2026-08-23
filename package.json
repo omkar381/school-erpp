@@ -1,0 +1,36 @@
+{
+  "name": "school-erp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "School ERP Platform - multi-tenant SaaS ERP for schools",
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "packages/*"
+  ],
+  "scripts": {
+    "api:dev": "npm run start:dev -w @erp/api",
+    "api:build": "npm run build -w @erp/api",
+    "api:test": "npm run test -w @erp/api",
+    "web:dev": "npm run dev -w @erp/web",
+    "web:build": "npm run build -w @erp/web",
+    "db:generate": "npm run prisma:generate -w @erp/api",
+    "db:migrate": "npm run prisma:migrate -w @erp/api",
+    "db:seed": "npm run prisma:seed -w @erp/api",
+    "db:studio": "npm run prisma:studio -w @erp/api",
+    "build": "npm run build -w @erp/shared-types && npm run build -w @erp/validation && npm run build -w @erp/api-client && npm run api:build && npm run web:build",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "docker:logs": "docker compose -f docker/docker-compose.yml logs -f"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

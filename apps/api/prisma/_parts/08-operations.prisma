@@ -1,0 +1,447 @@
+
+// ===========================================================================
+//  TRANSPORT
+// ===========================================================================
+
+model Vehicle {
+  id                String        @id @default(uuid()) @db.Uuid
+  schoolId          String        @db.Uuid
+  registrationNumber String
+  name              String?
+  /// BUS | VAN | CAR | OTHER
+  type              String        @default("BUS")
+  make              String?
+  model             String?
+  capacity          Int
+  status            VehicleStatus @default(ACTIVE)
+
+  insuranceNumber   String?
+  insuranceExpiry   DateTime?     @db.Date
+  fitnessExpiry     DateTime?     @db.Date
+  permitExpiry      DateTime?     @db.Date
+  pollutionExpiry   DateTime?     @db.Date
+  lastServiceDate   DateTime?     @db.Date
+  nextServiceDate   DateTime?     @db.Date
+
+  gpsDeviceId       String?
+  trackingEnabled   Boolean       @default(false)
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  school            School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  routes            TransportRoute[]
+  positions         VehiclePosition[]
+
+  @@unique([schoolId, registrationNumber])
+  @@index([schoolId, status])
+  @@map("vehicles")
+}
+
+model Driver {
+  id              String    @id @default(uuid()) @db.Uuid
+  schoolId        String    @db.Uuid
+  staffId         String?   @db.Uuid
+  name            String
+  phone           String
+  alternatePhone  String?
+  photoUrl        String?
+  licenseNumber   String
+  licenseExpiry   DateTime? @db.Date
+  address         String?
+  bloodGroup      BloodGroup @default(UNKNOWN)
+  /// DRIVER | ATTENDANT
+  role            String    @default("DRIVER")
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  school          School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  routes          TransportRoute[] @relation("RouteDriver")
+  attendantRoutes TransportRoute[] @relation("RouteAttendant")
+
+  @@unique([schoolId, licenseNumber])
+  @@index([schoolId, isActive])
+  @@map("drivers")
+}
+
+model TransportRoute {
+  id          String   @id @default(uuid()) @db.Uuid
+  schoolId    String   @db.Uuid
+  vehicleId   String?  @db.Uuid
+  driverId    String?  @db.Uuid
+  attendantId String?  @db.Uuid
+
+  name        String
+  code        String
+  description String?
+  distanceKm  Decimal? @db.Decimal(8, 2)
+  startTime   String?
+  endTime     String?
+  baseFare    Decimal  @default(0) @db.Decimal(12, 2)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  school      School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  vehicle     Vehicle?    @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  driver      Driver?     @relation("RouteDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  attendant   Driver?     @relation("RouteAttendant", fields: [attendantId], references: [id], onDelete: SetNull)
+  stops       RouteStop[]
+  assignments StudentTransport[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId, isActive])
+  @@map("transport_routes")
+}
+
+model RouteStop {
+  id            String   @id @default(uuid()) @db.Uuid
+  routeId       String   @db.Uuid
+  name          String
+  sequence      Int
+  pickupTime    String?
+  dropTime      String?
+  latitude      Float?
+  longitude     Float?
+  landmark      String?
+  /// Additional fare charged for boarding at this stop
+  fare          Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  route         TransportRoute     @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  assignments   StudentTransport[]
+
+  @@unique([routeId, sequence])
+  @@index([routeId])
+  @@map("route_stops")
+}
+
+model StudentTransport {
+  id             String             @id @default(uuid()) @db.Uuid
+  studentId      String             @db.Uuid
+  academicYearId String             @db.Uuid
+  routeId        String             @db.Uuid
+  pickupStopId   String?            @db.Uuid
+  dropStopId     String?            @db.Uuid
+  direction      TransportDirection @default(BOTH)
+  fareAmount     Decimal            @default(0) @db.Decimal(12, 2)
+  startDate      DateTime           @db.Date
+  endDate        DateTime?          @db.Date
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  student        Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  route          TransportRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  pickupStop     RouteStop?     @relation(fields: [pickupStopId], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, academicYearId])
+  @@index([routeId, isActive])
+  @@map("student_transports")
+}
+
+/// Rolling GPS breadcrumb trail; pruned by a scheduled job.
+model VehiclePosition {
+  id         String   @id @default(uuid()) @db.Uuid
+  vehicleId  String   @db.Uuid
+  latitude   Float
+  longitude  Float
+  speedKph   Float?
+  heading    Float?
+  accuracy   Float?
+  recordedAt DateTime
+  createdAt  DateTime @default(now())
+
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, recordedAt])
+  @@map("vehicle_positions")
+}
+
+// ===========================================================================
+//  LIBRARY
+// ===========================================================================
+
+model BookCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  schoolId  String   @db.Uuid
+  name      String
+  code      String
+  parentId  String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  parent    BookCategory?  @relation("BookCategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  BookCategory[] @relation("BookCategoryTree")
+  books     Book[]
+
+  @@unique([schoolId, code])
+  @@map("book_categories")
+}
+
+model Book {
+  id           String   @id @default(uuid()) @db.Uuid
+  schoolId     String   @db.Uuid
+  categoryId   String?  @db.Uuid
+
+  title        String
+  subtitle     String?
+  author       String
+  coAuthors    String[] @default([])
+  publisher    String?
+  isbn         String?
+  edition      String?
+  language     String?  @default("English")
+  publishYear  Int?
+  pages        Int?
+  description  String?
+  coverImageUrl String?
+  rackLocation String?
+  price        Decimal? @db.Decimal(12, 2)
+
+  totalCopies  Int      @default(0)
+  availableCopies Int   @default(0)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  school       School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  category     BookCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  copies       BookCopy[]
+
+  @@unique([schoolId, isbn])
+  @@index([schoolId, title])
+  @@index([schoolId, author])
+  @@map("books")
+}
+
+model BookCopy {
+  id            String         @id @default(uuid()) @db.Uuid
+  bookId        String         @db.Uuid
+  accessionNumber String
+  status        BookCopyStatus @default(AVAILABLE)
+  condition     String?        @default("GOOD")
+  purchaseDate  DateTime?      @db.Date
+  price         Decimal?       @db.Decimal(12, 2)
+  rackLocation  String?
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  book          Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  issues        LibraryIssue[]
+
+  @@unique([bookId, accessionNumber])
+  @@index([status])
+  @@map("book_copies")
+}
+
+model LibraryMembership {
+  id          String   @id @default(uuid()) @db.Uuid
+  schoolId    String   @db.Uuid
+  /// STUDENT | STAFF
+  memberType  String
+  studentId   String?  @db.Uuid
+  staffId     String?  @db.Uuid
+  cardNumber  String
+  maxBooks    Int      @default(2)
+  maxDays     Int      @default(14)
+  validFrom   DateTime @db.Date
+  validTo     DateTime? @db.Date
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  issues      LibraryIssue[]
+
+  @@unique([schoolId, cardNumber])
+  @@unique([studentId])
+  @@unique([staffId])
+  @@map("library_memberships")
+}
+
+model LibraryIssue {
+  id            String             @id @default(uuid()) @db.Uuid
+  schoolId      String             @db.Uuid
+  bookCopyId    String             @db.Uuid
+  membershipId  String?            @db.Uuid
+  studentId     String?            @db.Uuid
+  staffId       String?            @db.Uuid
+
+  issueDate     DateTime           @db.Date
+  dueDate       DateTime           @db.Date
+  returnDate    DateTime?          @db.Date
+  status        LibraryIssueStatus @default(ISSUED)
+  renewalCount  Int                @default(0)
+  issuedById    String?            @db.Uuid
+  receivedById  String?            @db.Uuid
+  remarks       String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  school        School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  bookCopy      BookCopy           @relation(fields: [bookCopyId], references: [id], onDelete: Restrict)
+  membership    LibraryMembership? @relation(fields: [membershipId], references: [id], onDelete: SetNull)
+  student       Student?           @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  fines         LibraryFine[]
+
+  @@index([schoolId, status, dueDate])
+  @@index([studentId])
+  @@index([bookCopyId])
+  @@map("library_issues")
+}
+
+model LibraryFine {
+  id          String    @id @default(uuid()) @db.Uuid
+  issueId     String    @db.Uuid
+  /// OVERDUE | LOST | DAMAGE
+  reason      String    @default("OVERDUE")
+  amount      Decimal   @db.Decimal(12, 2)
+  paidAmount  Decimal   @default(0) @db.Decimal(12, 2)
+  waivedAmount Decimal  @default(0) @db.Decimal(12, 2)
+  isSettled   Boolean   @default(false)
+  settledAt   DateTime?
+  waivedById  String?   @db.Uuid
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  issue       LibraryIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+  @@index([isSettled])
+  @@map("library_fines")
+}
+
+// ===========================================================================
+//  INVENTORY
+// ===========================================================================
+
+model InventoryCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  schoolId  String   @db.Uuid
+  name      String
+  code      String
+  createdAt DateTime @default(now())
+
+  items     InventoryItem[]
+
+  @@unique([schoolId, code])
+  @@map("inventory_categories")
+}
+
+model Supplier {
+  id            String   @id @default(uuid()) @db.Uuid
+  schoolId      String   @db.Uuid
+  name          String
+  code          String
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  gstNumber     String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  school        School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  purchases     Purchase[]
+
+  @@unique([schoolId, code])
+  @@map("suppliers")
+}
+
+model InventoryItem {
+  id           String   @id @default(uuid()) @db.Uuid
+  schoolId     String   @db.Uuid
+  categoryId   String?  @db.Uuid
+  name         String
+  code         String
+  description  String?
+  unit         String   @default("PCS")
+  quantity     Decimal  @default(0) @db.Decimal(12, 3)
+  reorderLevel Decimal  @default(0) @db.Decimal(12, 3)
+  unitCost     Decimal  @default(0) @db.Decimal(12, 2)
+  location     String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  school       School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  category     InventoryCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  transactions StockTransaction[]
+  purchaseItems PurchaseItem[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId, isActive])
+  @@map("inventory_items")
+}
+
+model Purchase {
+  id          String   @id @default(uuid()) @db.Uuid
+  schoolId    String   @db.Uuid
+  supplierId  String?  @db.Uuid
+  purchaseNumber String
+  invoiceNumber String?
+  purchaseDate DateTime @db.Date
+  subtotal    Decimal  @default(0) @db.Decimal(12, 2)
+  taxAmount   Decimal  @default(0) @db.Decimal(12, 2)
+  total       Decimal  @default(0) @db.Decimal(12, 2)
+  /// DRAFT | ORDERED | RECEIVED | CANCELLED
+  status      String   @default("DRAFT")
+  notes       String?
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  school      School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  supplier    Supplier?      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  items       PurchaseItem[]
+
+  @@unique([schoolId, purchaseNumber])
+  @@index([schoolId, purchaseDate])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  purchaseId String   @db.Uuid
+  itemId     String   @db.Uuid
+  quantity   Decimal  @db.Decimal(12, 3)
+  unitCost   Decimal  @db.Decimal(12, 2)
+  taxPercent Decimal  @default(0) @db.Decimal(5, 2)
+  amount     Decimal  @db.Decimal(12, 2)
+
+  purchase   Purchase      @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  item       InventoryItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseId])
+  @@map("purchase_items")
+}
+
+model StockTransaction {
+  id             String               @id @default(uuid()) @db.Uuid
+  schoolId       String               @db.Uuid
+  itemId         String               @db.Uuid
+  type           StockTransactionType
+  quantity       Decimal              @db.Decimal(12, 3)
+  balanceAfter   Decimal              @db.Decimal(12, 3)
+  unitCost       Decimal?             @db.Decimal(12, 2)
+  reference      String?
+  issuedToType   String?
+  issuedToId     String?              @db.Uuid
+  notes          String?
+  createdById    String?              @db.Uuid
+  occurredAt     DateTime             @default(now())
+  createdAt      DateTime             @default(now())
+
+  school         School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  item           InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, occurredAt])
+  @@index([itemId, occurredAt])
+  @@map("stock_transactions")
+}

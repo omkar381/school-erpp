@@ -1,0 +1,330 @@
+
+// ===========================================================================
+//  ATTENDANCE
+// ===========================================================================
+
+model Attendance {
+  id          String                @id @default(uuid()) @db.Uuid
+  schoolId    String                @db.Uuid
+  studentId   String                @db.Uuid
+  classId     String                @db.Uuid
+  sectionId   String                @db.Uuid
+  /// null for DAILY attendance, set for SUBJECT-wise attendance
+  subjectId   String?               @db.Uuid
+  periodId    String?               @db.Uuid
+
+  date        DateTime              @db.Date
+  sessionType AttendanceSessionType @default(DAILY)
+  status      AttendanceStatus
+  /// minutes late, when status = LATE
+  lateMinutes Int?
+  remarks     String?
+  /// MANUAL | QR | BIOMETRIC | RFID | IMPORT
+  source      String                @default("MANUAL")
+  deviceRef   String?
+
+  markedById  String?               @db.Uuid
+  markedAt    DateTime              @default(now())
+  updatedById String?               @db.Uuid
+  updatedAt   DateTime              @updatedAt
+  createdAt   DateTime              @default(now())
+
+  school      School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student     Student               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class       Class                 @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section     Section               @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject     Subject?              @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  markedBy    Staff?                @relation("AttendanceMarker", fields: [markedById], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, date, sessionType, subjectId])
+  @@index([schoolId, date])
+  @@index([sectionId, date, sessionType])
+  @@index([studentId, date])
+  @@index([schoolId, status, date])
+  @@map("attendances")
+}
+
+model StaffAttendance {
+  id           String                @id @default(uuid()) @db.Uuid
+  schoolId     String                @db.Uuid
+  staffId      String                @db.Uuid
+  date         DateTime              @db.Date
+  status       StaffAttendanceStatus
+  checkInAt    DateTime?
+  checkOutAt   DateTime?
+  workedMinutes Int?
+  lateMinutes  Int?
+  checkInLat   Float?
+  checkInLng   Float?
+  checkOutLat  Float?
+  checkOutLng  Float?
+  source       String                @default("MANUAL")
+  remarks      String?
+  markedById   String?               @db.Uuid
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  school       School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  staff        Staff                 @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, date])
+  @@index([schoolId, date])
+  @@map("staff_attendances")
+}
+
+// ===========================================================================
+//  TIMETABLE
+// ===========================================================================
+
+model Period {
+  id             String     @id @default(uuid()) @db.Uuid
+  schoolId       String     @db.Uuid
+  academicYearId String     @db.Uuid
+  name           String
+  sequence       Int
+  startTime      String
+  endTime        String
+  type           PeriodType @default(CLASS)
+  /// Optional: restrict this period definition to a class level band
+  appliesToLevel Int?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  school         School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear    @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  timetableSlots TimetableSlot[]
+
+  @@unique([schoolId, academicYearId, sequence, appliesToLevel])
+  @@index([schoolId, academicYearId])
+  @@map("periods")
+}
+
+model TimetableSlot {
+  id             String    @id @default(uuid()) @db.Uuid
+  schoolId       String    @db.Uuid
+  academicYearId String    @db.Uuid
+  classId        String    @db.Uuid
+  sectionId      String    @db.Uuid
+  periodId       String    @db.Uuid
+  subjectId      String?   @db.Uuid
+  staffId        String?   @db.Uuid
+  roomId         String?   @db.Uuid
+  dayOfWeek      DayOfWeek
+  effectiveFrom  DateTime? @db.Date
+  effectiveTo    DateTime? @db.Date
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  school         School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  class          Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section        Section      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  period         Period       @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  subject        Subject?     @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  staff          Staff?       @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  room           Room?        @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  substitutions  TimetableSubstitution[]
+
+  @@unique([sectionId, dayOfWeek, periodId])
+  @@index([schoolId, academicYearId, dayOfWeek])
+  @@index([staffId, dayOfWeek])
+  @@index([roomId, dayOfWeek])
+  @@map("timetable_slots")
+}
+
+model TimetableSubstitution {
+  id                String   @id @default(uuid()) @db.Uuid
+  slotId            String   @db.Uuid
+  date              DateTime @db.Date
+  substituteStaffId String?  @db.Uuid
+  reason            String?
+  /// true when the class is cancelled rather than substituted
+  isCancelled       Boolean  @default(false)
+  createdById       String?  @db.Uuid
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  slot              TimetableSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  substituteStaff   Staff?        @relation("SubstituteTeacher", fields: [substituteStaffId], references: [id], onDelete: SetNull)
+
+  @@unique([slotId, date])
+  @@index([date])
+  @@index([substituteStaffId, date])
+  @@map("timetable_substitutions")
+}
+
+// ===========================================================================
+//  HOMEWORK / ASSIGNMENTS
+// ===========================================================================
+
+model Homework {
+  id           String         @id @default(uuid()) @db.Uuid
+  schoolId     String         @db.Uuid
+  classId      String         @db.Uuid
+  sectionId    String         @db.Uuid
+  subjectId    String         @db.Uuid
+  staffId      String         @db.Uuid
+
+  title        String
+  description  String
+  assignedDate DateTime       @db.Date
+  dueDate      DateTime       @db.Date
+  priority     Priority       @default(NORMAL)
+  status       HomeworkStatus @default(ASSIGNED)
+  maxMarks     Decimal?       @db.Decimal(8, 2)
+  allowLate    Boolean        @default(true)
+  notifyParents Boolean       @default(true)
+  publishedAt  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+
+  school       School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class        Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section      Section        @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject      Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  staff        Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  attachments  Attachment[]
+  submissions  HomeworkSubmission[]
+
+  @@index([schoolId, sectionId, dueDate])
+  @@index([staffId, assignedDate])
+  @@index([deletedAt])
+  @@map("homework")
+}
+
+model HomeworkSubmission {
+  id           String           @id @default(uuid()) @db.Uuid
+  homeworkId   String           @db.Uuid
+  studentId    String           @db.Uuid
+  status       SubmissionStatus @default(PENDING)
+  content      String?
+  submittedAt  DateTime?
+  isLate       Boolean          @default(false)
+  marksAwarded Decimal?         @db.Decimal(8, 2)
+  grade        String?
+  feedback     String?
+  reviewedById String?          @db.Uuid
+  reviewedAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  homework     Homework         @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  student      Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  attachments  Attachment[]
+
+  @@unique([homeworkId, studentId])
+  @@index([studentId, status])
+  @@map("homework_submissions")
+}
+
+model Assignment {
+  id            String         @id @default(uuid()) @db.Uuid
+  schoolId      String         @db.Uuid
+  classId       String         @db.Uuid
+  sectionId     String         @db.Uuid
+  subjectId     String         @db.Uuid
+  staffId       String         @db.Uuid
+
+  title         String
+  description   String
+  instructions  String?
+  maxMarks      Decimal        @default(100) @db.Decimal(8, 2)
+  weightage     Decimal?       @db.Decimal(5, 2)
+  publishedAt   DateTime?
+  startDate     DateTime
+  dueDate       DateTime
+  allowLate     Boolean        @default(false)
+  latePenaltyPercent Decimal?  @db.Decimal(5, 2)
+  status        HomeworkStatus @default(DRAFT)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+
+  school        School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class         Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section       Section        @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject       Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  staff         Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  attachments   Attachment[]
+  submissions   AssignmentSubmission[]
+
+  @@index([schoolId, sectionId, dueDate])
+  @@index([staffId])
+  @@index([deletedAt])
+  @@map("assignments")
+}
+
+model AssignmentSubmission {
+  id           String           @id @default(uuid()) @db.Uuid
+  assignmentId String           @db.Uuid
+  studentId    String           @db.Uuid
+  status       SubmissionStatus @default(PENDING)
+  content      String?
+  submittedAt  DateTime?
+  isLate       Boolean          @default(false)
+  attemptCount Int              @default(0)
+  marksAwarded Decimal?         @db.Decimal(8, 2)
+  grade        String?
+  feedback     String?
+  reviewedById String?          @db.Uuid
+  reviewedAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  assignment   Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student      Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  attachments  Attachment[]
+
+  @@unique([assignmentId, studentId])
+  @@index([studentId, status])
+  @@map("assignment_submissions")
+}
+
+/// Polymorphic file attachment; the actual bytes live in object storage.
+model Attachment {
+  id                     String   @id @default(uuid()) @db.Uuid
+  schoolId               String?  @db.Uuid
+  fileName               String
+  storageKey             String
+  url                    String?
+  mimeType               String
+  sizeBytes              Int
+  checksum               String?
+  uploadedById           String?  @db.Uuid
+  createdAt              DateTime @default(now())
+
+  homeworkId             String?  @db.Uuid
+  homeworkSubmissionId   String?  @db.Uuid
+  assignmentId           String?  @db.Uuid
+  assignmentSubmissionId String?  @db.Uuid
+  noticeId               String?  @db.Uuid
+  messageId              String?  @db.Uuid
+  leaveRequestId         String?  @db.Uuid
+  ticketId               String?  @db.Uuid
+  ticketMessageId        String?  @db.Uuid
+  eventId                String?  @db.Uuid
+  enquiryId              String?  @db.Uuid
+  complaintId            String?  @db.Uuid
+
+  homework               Homework?             @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  homeworkSubmission     HomeworkSubmission?   @relation(fields: [homeworkSubmissionId], references: [id], onDelete: Cascade)
+  assignment             Assignment?           @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  assignmentSubmission   AssignmentSubmission? @relation(fields: [assignmentSubmissionId], references: [id], onDelete: Cascade)
+  notice                 Notice?               @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  message                Message?              @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  leaveRequest           LeaveRequest?         @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+  ticket                 SupportTicket?        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketMessage          TicketMessage?        @relation(fields: [ticketMessageId], references: [id], onDelete: Cascade)
+  event                  Event?                @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  enquiry                AdmissionEnquiry?     @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  complaint              Complaint?            @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@index([homeworkId])
+  @@index([assignmentId])
+  @@index([noticeId])
+  @@index([messageId])
+  @@map("attachments")
+}

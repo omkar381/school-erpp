@@ -1,0 +1,403 @@
+
+// ===========================================================================
+//  PLATFORM / TENANCY
+// ===========================================================================
+
+model SubscriptionPlan {
+  id             String               @id @default(uuid()) @db.Uuid
+  code           String               @unique
+  name           String
+  tier           SubscriptionPlanTier
+  description    String?
+  priceMonthly   Decimal              @default(0) @db.Decimal(12, 2)
+  priceYearly    Decimal              @default(0) @db.Decimal(12, 2)
+  currency       String               @default("INR")
+  maxStudents    Int                  @default(500)
+  maxStaff       Int                  @default(100)
+  storageMb      Int                  @default(5120)
+  /// Array of module keys enabled by this plan (see ModuleKey constants)
+  modules        String[]             @default([])
+  trialDays      Int                  @default(14)
+  isActive       Boolean              @default(true)
+  sortOrder      Int                  @default(0)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  subscriptions  Subscription[]
+
+  @@index([isActive, sortOrder])
+  @@map("subscription_plans")
+}
+
+model School {
+  id                String       @id @default(uuid()) @db.Uuid
+  code              String       @unique
+  slug              String       @unique
+  name              String
+  legalName         String?
+  status            SchoolStatus @default(TRIAL)
+
+  email             String
+  phone             String
+  alternatePhone    String?
+  website           String?
+
+  addressLine1      String?
+  addressLine2      String?
+  city              String?
+  state             String?
+  country           String       @default("India")
+  postalCode        String?
+  latitude          Float?
+  longitude         Float?
+
+  board             String?
+  affiliationNumber String?
+  establishedYear   Int?
+  principalName     String?
+
+  timezone          String       @default("Asia/Kolkata")
+  currency          String       @default("INR")
+  locale            String       @default("en")
+  dateFormat        String       @default("dd/MM/yyyy")
+
+  logoUrl           String?
+  faviconUrl        String?
+  primaryColor      String       @default("#0F172A")
+  secondaryColor    String       @default("#2563EB")
+  reportCardHeader  String?
+  invoiceFooter     String?
+
+  /// Per-school module toggles: { "library": true, "transport": false }
+  enabledModules    Json         @default("{}")
+  /// Arbitrary school-level settings namespace
+  settings          Json         @default("{}")
+
+  onboardingStep    Int          @default(0)
+  onboardedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  deletedAt         DateTime?
+
+  subscriptions      Subscription[]
+  users              User[]
+  roles              Role[]
+  academicYears      AcademicYear[]
+  departments        Department[]
+  classes            Class[]
+  sections           Section[]
+  subjects           Subject[]
+  students           Student[]
+  guardians          Guardian[]
+  staff              Staff[]
+  enrollments        Enrollment[]
+  attendances        Attendance[]
+  staffAttendances   StaffAttendance[]
+  periods            Period[]
+  rooms              Room[]
+  timetableSlots     TimetableSlot[]
+  homework           Homework[]
+  assignments        Assignment[]
+  exams              Exam[]
+  gradeScales        GradeScale[]
+  reportCards        ReportCard[]
+  feeHeads           FeeHead[]
+  feeStructures      FeeStructure[]
+  invoices           Invoice[]
+  payments           Payment[]
+  refunds            Refund[]
+  discounts          Discount[]
+  ledgerEntries      LedgerEntry[]
+  notices            Notice[]
+  notifications      Notification[]
+  conversations      Conversation[]
+  leaveTypes         LeaveType[]
+  leaveRequests      LeaveRequest[]
+  events             Event[]
+  holidays           Holiday[]
+  vehicles           Vehicle[]
+  drivers            Driver[]
+  transportRoutes    TransportRoute[]
+  books              Book[]
+  libraryIssues      LibraryIssue[]
+  inventoryItems     InventoryItem[]
+  suppliers          Supplier[]
+  purchases          Purchase[]
+  stockTransactions  StockTransaction[]
+  documents          Document[]
+  auditLogs          AuditLog[]
+  admissionEnquiries AdmissionEnquiry[]
+  supportTickets     SupportTicket[]
+  certificates       Certificate[]
+  websitePages       WebsitePage[]
+  galleryAlbums      GalleryAlbum[]
+  jobRuns            JobRun[]
+  complaints         Complaint[]
+  idCards            IdCard[]
+  designations       Designation[]
+  salaryStructures   SalaryStructure[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("schools")
+}
+
+model Subscription {
+  id             String             @id @default(uuid()) @db.Uuid
+  schoolId       String             @db.Uuid
+  planId         String             @db.Uuid
+  status         SubscriptionStatus @default(TRIALING)
+  startDate      DateTime
+  endDate        DateTime
+  cancelledAt    DateTime?
+  autoRenew      Boolean            @default(true)
+  billingCycle   String             @default("YEARLY")
+  amount         Decimal            @default(0) @db.Decimal(12, 2)
+  currency       String             @default("INR")
+  /// Overrides on top of plan limits
+  limitOverrides Json               @default("{}")
+  notes          String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  school         School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  plan           SubscriptionPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([schoolId, status])
+  @@index([endDate])
+  @@map("subscriptions")
+}
+
+// ===========================================================================
+//  IDENTITY / RBAC
+// ===========================================================================
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  /// dot-notation key e.g. students.create
+  key         String   @unique
+  module      String
+  action      String
+  description String?
+  createdAt   DateTime @default(now())
+
+  roles       RolePermission[]
+  userGrants  UserPermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+model Role {
+  id          String    @id @default(uuid()) @db.Uuid
+  /// null for platform-level (SUPER_ADMIN) roles
+  schoolId    String?   @db.Uuid
+  type        RoleType
+  name        String
+  description String?
+  /// System roles cannot be deleted and have a protected permission floor
+  isSystem    Boolean   @default(false)
+  isDefault   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  school      School?          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  permissions RolePermission[]
+  userRoles   UserRole[]
+
+  @@unique([schoolId, type])
+  @@index([schoolId])
+  @@map("roles")
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  createdAt    DateTime   @default(now())
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id                  String     @id @default(uuid()) @db.Uuid
+  /// null only for SUPER_ADMIN platform users
+  schoolId            String?    @db.Uuid
+
+  email               String?
+  phone               String?
+  passwordHash        String?
+  status              UserStatus @default(ACTIVE)
+
+  firstName           String
+  middleName          String?
+  lastName            String?
+  displayName         String?
+  avatarUrl           String?
+  locale              String     @default("en")
+  timezone            String?
+
+  emailVerifiedAt     DateTime?
+  phoneVerifiedAt     DateTime?
+  lastLoginAt         DateTime?
+  lastLoginIp         String?
+  passwordChangedAt   DateTime?
+  mustChangePassword  Boolean    @default(false)
+  failedLoginAttempts Int        @default(0)
+  lockedUntil         DateTime?
+
+  twoFactorEnabled    Boolean    @default(false)
+  twoFactorSecret     String?
+
+  createdById         String?    @db.Uuid
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  deletedAt           DateTime?
+
+  school              School?          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  roles               UserRole[]
+  permissions         UserPermission[]
+  sessions            Session[]
+  devices             Device[]
+  otps                OtpCode[]
+  tokens              VerificationToken[]
+
+  student             Student?
+  guardian            Guardian?
+  staff               Staff?
+
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  sentMessages        Message[]
+  conversationMembers ConversationMember[]
+  noticeReads         NoticeRead[]
+  createdNotices      Notice[]        @relation("NoticeAuthor")
+  uploadedDocuments   Document[]      @relation("DocumentUploader")
+  supportTickets      SupportTicket[] @relation("TicketRequester")
+  assignedTickets     SupportTicket[] @relation("TicketAssignee")
+  ticketMessages      TicketMessage[]
+  complaintsFiled     Complaint[]     @relation("ComplaintReporter")
+
+  @@unique([schoolId, email])
+  @@unique([schoolId, phone])
+  @@index([email])
+  @@index([phone])
+  @@index([schoolId, status])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model UserRole {
+  userId    String   @db.Uuid
+  roleId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+/// Per-user permission override. effect=true grants, effect=false explicitly denies.
+model UserPermission {
+  userId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  effect       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
+  @@map("user_permissions")
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  /// SHA-256 of the refresh token; the raw token is never persisted
+  refreshTokenHash String    @unique
+  familyId         String    @db.Uuid
+  deviceId         String?   @db.Uuid
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  revokedReason    String?
+  replacedById     String?   @db.Uuid
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime  @default(now())
+
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device           Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Device {
+  id          String         @id @default(uuid()) @db.Uuid
+  userId      String         @db.Uuid
+  platform    DevicePlatform
+  deviceName  String?
+  deviceModel String?
+  osVersion   String?
+  appVersion  String?
+  fcmToken    String?
+  pushEnabled Boolean        @default(true)
+  lastSeenAt  DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions    Session[]
+
+  @@unique([userId, fcmToken])
+  @@index([userId])
+  @@index([fcmToken])
+  @@map("devices")
+}
+
+model OtpCode {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String?   @db.Uuid
+  /// phone or email the OTP was sent to
+  identifier  String
+  purpose     String
+  codeHash    String
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  consumedAt  DateTime?
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([identifier, purpose])
+  @@index([expiresAt])
+  @@map("otp_codes")
+}
+
+model VerificationToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  /// PASSWORD_RESET | EMAIL_VERIFY | INVITE
+  purpose    String
+  tokenHash  String    @unique
+  consumedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@map("verification_tokens")
+}

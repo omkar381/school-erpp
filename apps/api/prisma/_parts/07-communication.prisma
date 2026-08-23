@@ -1,0 +1,374 @@
+
+// ===========================================================================
+//  COMMUNICATION: NOTICES, NOTIFICATIONS, CHAT
+// ===========================================================================
+
+model Notice {
+  id            String         @id @default(uuid()) @db.Uuid
+  schoolId      String         @db.Uuid
+  authorId      String         @db.Uuid
+
+  title         String
+  body          String
+  /// NOTICE | CIRCULAR | ANNOUNCEMENT
+  kind          String         @default("NOTICE")
+  audience      NoticeAudience @default(ALL)
+  /// Used when audience = CLASS
+  classId       String?        @db.Uuid
+  /// Used when audience = SECTION
+  sectionId     String?        @db.Uuid
+  /// Used when audience = SPECIFIC_USERS
+  targetUserIds String[]       @default([])
+
+  priority      Priority       @default(NORMAL)
+  status        NoticeStatus   @default(DRAFT)
+  isPinned      Boolean        @default(false)
+  publishAt     DateTime?
+  expiresAt     DateTime?
+  publishedAt   DateTime?
+
+  sendPush      Boolean        @default(true)
+  sendEmail     Boolean        @default(false)
+  sendSms       Boolean        @default(false)
+
+  viewCount     Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+
+  school        School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  author        User           @relation("NoticeAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  class         Class?         @relation(fields: [classId], references: [id], onDelete: Cascade)
+  section       Section?       @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  attachments   Attachment[]
+  reads         NoticeRead[]
+
+  @@index([schoolId, status, publishAt])
+  @@index([schoolId, audience])
+  @@index([deletedAt])
+  @@map("notices")
+}
+
+model NoticeRead {
+  noticeId String   @db.Uuid
+  userId   String   @db.Uuid
+  readAt   DateTime @default(now())
+
+  notice   Notice   @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([noticeId, userId])
+  @@index([userId])
+  @@map("notice_reads")
+}
+
+model Notification {
+  id          String              @id @default(uuid()) @db.Uuid
+  schoolId    String?             @db.Uuid
+  userId      String              @db.Uuid
+
+  type        NotificationType    @default(GENERAL)
+  title       String
+  body        String
+  /// Deep-link payload consumed by web and mobile clients
+  data        Json                @default("{}")
+  priority    Priority            @default(NORMAL)
+  imageUrl    String?
+  actionUrl   String?
+
+  readAt      DateTime?
+  archivedAt  DateTime?
+  createdAt   DateTime            @default(now())
+
+  school      School?             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries  NotificationDelivery[]
+
+  @@index([userId, readAt, createdAt])
+  @@index([schoolId, type, createdAt])
+  @@map("notifications")
+}
+
+model NotificationDelivery {
+  id             String              @id @default(uuid()) @db.Uuid
+  notificationId String              @db.Uuid
+  channel        NotificationChannel
+  status         DeliveryStatus      @default(QUEUED)
+  target         String?
+  providerId     String?
+  error          String?
+  attempts       Int                 @default(0)
+  sentAt         DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  notification   Notification        @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@index([status, channel])
+  @@map("notification_deliveries")
+}
+
+/// Per-user opt-in matrix, keyed by NotificationType.
+model NotificationPreference {
+  id       String           @id @default(uuid()) @db.Uuid
+  userId   String           @db.Uuid
+  type     NotificationType
+  inApp    Boolean          @default(true)
+  push     Boolean          @default(true)
+  email    Boolean          @default(false)
+  sms      Boolean          @default(false)
+  updatedAt DateTime        @updatedAt
+
+  @@unique([userId, type])
+  @@map("notification_preferences")
+}
+
+model Conversation {
+  id           String           @id @default(uuid()) @db.Uuid
+  schoolId     String           @db.Uuid
+  type         ConversationType @default(DIRECT)
+  title        String?
+  /// Stable hash of sorted member ids, guarantees one DM thread per pair
+  directKey    String?
+  createdById  String?          @db.Uuid
+  lastMessageAt DateTime?
+  lastMessagePreview String?
+  isArchived   Boolean          @default(false)
+  isLocked     Boolean          @default(false)
+  metadata     Json             @default("{}")
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  school       School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  members      ConversationMember[]
+  messages     Message[]
+
+  @@unique([schoolId, directKey])
+  @@index([schoolId, lastMessageAt])
+  @@map("conversations")
+}
+
+model ConversationMember {
+  id             String    @id @default(uuid()) @db.Uuid
+  conversationId String    @db.Uuid
+  userId         String    @db.Uuid
+  role           String    @default("MEMBER")
+  lastReadAt     DateTime?
+  unreadCount    Int       @default(0)
+  isMuted        Boolean   @default(false)
+  joinedAt       DateTime  @default(now())
+  leftAt         DateTime?
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId, leftAt])
+  @@map("conversation_members")
+}
+
+model Message {
+  id             String      @id @default(uuid()) @db.Uuid
+  conversationId String      @db.Uuid
+  senderId       String      @db.Uuid
+  type           MessageType @default(TEXT)
+  body           String?
+  /// Client-generated id used to de-duplicate offline sends
+  clientRef      String?
+  replyToId      String?     @db.Uuid
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  isFlagged      Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  replyTo        Message?     @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies        Message[]    @relation("MessageReply")
+  attachments    Attachment[]
+  receipts       MessageReceipt[]
+
+  @@unique([conversationId, clientRef])
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model MessageReceipt {
+  messageId   String    @db.Uuid
+  userId      String    @db.Uuid
+  deliveredAt DateTime?
+  readAt      DateTime?
+
+  message     Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId])
+  @@index([userId])
+  @@map("message_receipts")
+}
+
+// ===========================================================================
+//  LEAVE
+// ===========================================================================
+
+model LeaveType {
+  id            String             @id @default(uuid()) @db.Uuid
+  schoolId      String             @db.Uuid
+  name          String
+  code          String
+  applicableTo  LeaveApplicantType @default(STAFF)
+  annualQuota   Decimal            @default(0) @db.Decimal(6, 2)
+  isPaid        Boolean            @default(true)
+  carryForward  Boolean            @default(false)
+  maxCarryForward Decimal          @default(0) @db.Decimal(6, 2)
+  requiresDocument Boolean         @default(false)
+  isActive      Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  school        School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  requests      LeaveRequest[]
+  balances      LeaveBalance[]
+
+  @@unique([schoolId, code])
+  @@map("leave_types")
+}
+
+model LeaveBalance {
+  id          String    @id @default(uuid()) @db.Uuid
+  staffId     String    @db.Uuid
+  leaveTypeId String    @db.Uuid
+  year        Int
+  allocated   Decimal   @default(0) @db.Decimal(6, 2)
+  used        Decimal   @default(0) @db.Decimal(6, 2)
+  pending     Decimal   @default(0) @db.Decimal(6, 2)
+  carriedOver Decimal   @default(0) @db.Decimal(6, 2)
+  updatedAt   DateTime  @updatedAt
+
+  staff       Staff     @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, leaveTypeId, year])
+  @@map("leave_balances")
+}
+
+model LeaveRequest {
+  id            String             @id @default(uuid()) @db.Uuid
+  schoolId      String             @db.Uuid
+  applicantType LeaveApplicantType
+  studentId     String?            @db.Uuid
+  staffId       String?            @db.Uuid
+  leaveTypeId   String?            @db.Uuid
+  /// User who actually submitted (a parent may apply for a student)
+  submittedById String?            @db.Uuid
+
+  fromDate      DateTime           @db.Date
+  toDate        DateTime           @db.Date
+  isHalfDay     Boolean            @default(false)
+  totalDays     Decimal            @db.Decimal(5, 2)
+  reason        String
+  status        LeaveStatus        @default(PENDING)
+
+  reviewedById  String?            @db.Uuid
+  reviewedAt    DateTime?
+  reviewRemarks String?
+  cancelledAt   DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  school        School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student       Student?           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  staff         Staff?             @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  leaveType     LeaveType?         @relation(fields: [leaveTypeId], references: [id], onDelete: SetNull)
+  attachments   Attachment[]
+
+  @@index([schoolId, status, fromDate])
+  @@index([studentId])
+  @@index([staffId])
+  @@map("leave_requests")
+}
+
+// ===========================================================================
+//  EVENTS
+// ===========================================================================
+
+model Event {
+  id             String    @id @default(uuid()) @db.Uuid
+  schoolId       String    @db.Uuid
+  academicYearId String?   @db.Uuid
+
+  title          String
+  description    String?
+  type           EventType @default(OTHER)
+  startAt        DateTime
+  endAt          DateTime
+  isAllDay       Boolean   @default(false)
+  venue          String?
+  audience       NoticeAudience @default(ALL)
+  classIds       String[]  @default([])
+  coverImageUrl  String?
+
+  requiresRegistration Boolean @default(false)
+  registrationDeadline DateTime?
+  maxParticipants Int?
+  isPublished    Boolean   @default(false)
+  isPublic       Boolean   @default(false)
+  createdById    String?   @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  school         School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear?       @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  attachments    Attachment[]
+  registrations  EventRegistration[]
+
+  @@index([schoolId, startAt])
+  @@index([schoolId, isPublished, isPublic])
+  @@map("events")
+}
+
+model EventRegistration {
+  id         String   @id @default(uuid()) @db.Uuid
+  eventId    String   @db.Uuid
+  studentId  String   @db.Uuid
+  /// REGISTERED | WAITLISTED | ATTENDED | CANCELLED
+  status     String   @default("REGISTERED")
+  notes      String?
+  registeredById String? @db.Uuid
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, studentId])
+  @@index([studentId])
+  @@map("event_registrations")
+}
+
+model Complaint {
+  id           String          @id @default(uuid()) @db.Uuid
+  schoolId     String          @db.Uuid
+  reportedById String          @db.Uuid
+  studentId    String?         @db.Uuid
+  category     String
+  subject      String
+  description  String
+  status       ComplaintStatus @default(OPEN)
+  isAnonymous  Boolean         @default(false)
+  resolution   String?
+  resolvedById String?         @db.Uuid
+  resolvedAt   DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  school       School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  reportedBy   User            @relation("ComplaintReporter", fields: [reportedById], references: [id], onDelete: Cascade)
+  student      Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  attachments  Attachment[]
+
+  @@index([schoolId, status])
+  @@map("complaints")
+}

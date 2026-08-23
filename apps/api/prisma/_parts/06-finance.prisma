@@ -1,0 +1,386 @@
+
+// ===========================================================================
+//  FEES / FINANCE
+//  Financial rows are never hard-deleted. Corrections happen via VOID,
+//  REFUND or ADJUSTMENT entries so the ledger stays immutable.
+// ===========================================================================
+
+model FeeHead {
+  id           String       @id @default(uuid()) @db.Uuid
+  schoolId     String       @db.Uuid
+  name         String
+  code         String
+  description  String?
+  /// ADMISSION | TUITION | EXAM | TRANSPORT | LIBRARY | ACTIVITY | HOSTEL | OTHER
+  category     String       @default("OTHER")
+  frequency    FeeFrequency @default(ONE_TIME)
+  isRefundable Boolean      @default(false)
+  isOptional   Boolean      @default(false)
+  /// Fee heads linked to a module are auto-applied by that module (e.g. transport)
+  linkedModule String?
+  isActive     Boolean      @default(true)
+  sortOrder    Int          @default(0)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  school       School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  items        FeeStructureItem[]
+  invoiceItems InvoiceItem[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId, isActive])
+  @@map("fee_heads")
+}
+
+model FeeStructure {
+  id             String   @id @default(uuid()) @db.Uuid
+  schoolId       String   @db.Uuid
+  academicYearId String   @db.Uuid
+  classId        String?  @db.Uuid
+  name           String
+  description    String?
+  /// Total of all items, denormalised for fast listing
+  totalAmount    Decimal  @default(0) @db.Decimal(12, 2)
+  currency       String   @default("INR")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  school         School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear       @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  class          Class?             @relation(fields: [classId], references: [id], onDelete: Cascade)
+  items          FeeStructureItem[]
+  installments   FeeInstallment[]
+  invoices       Invoice[]
+
+  @@unique([schoolId, academicYearId, name])
+  @@index([schoolId, academicYearId, classId])
+  @@map("fee_structures")
+}
+
+model FeeStructureItem {
+  id             String   @id @default(uuid()) @db.Uuid
+  feeStructureId String   @db.Uuid
+  feeHeadId      String   @db.Uuid
+  amount         Decimal  @db.Decimal(12, 2)
+  isOptional     Boolean  @default(false)
+  dueDate        DateTime? @db.Date
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  feeStructure   FeeStructure @relation(fields: [feeStructureId], references: [id], onDelete: Cascade)
+  feeHead        FeeHead      @relation(fields: [feeHeadId], references: [id], onDelete: Restrict)
+
+  @@unique([feeStructureId, feeHeadId])
+  @@index([feeHeadId])
+  @@map("fee_structure_items")
+}
+
+model FeeInstallment {
+  id             String   @id @default(uuid()) @db.Uuid
+  feeStructureId String   @db.Uuid
+  name           String
+  sequence       Int
+  /// Percentage of the structure total charged in this installment
+  percentage     Decimal? @db.Decimal(5, 2)
+  amount         Decimal? @db.Decimal(12, 2)
+  dueDate        DateTime @db.Date
+  lateFeeAfterDays Int    @default(0)
+  lateFeeAmount  Decimal  @default(0) @db.Decimal(12, 2)
+  lateFeePerDay  Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  feeStructure   FeeStructure @relation(fields: [feeStructureId], references: [id], onDelete: Cascade)
+  invoices       Invoice[]
+
+  @@unique([feeStructureId, sequence])
+  @@map("fee_installments")
+}
+
+model Discount {
+  id           String       @id @default(uuid()) @db.Uuid
+  schoolId     String       @db.Uuid
+  name         String
+  code         String
+  /// DISCOUNT | SCHOLARSHIP | CONCESSION | SIBLING | STAFF_WARD | MERIT
+  kind         String       @default("DISCOUNT")
+  type         DiscountType @default(PERCENTAGE)
+  value        Decimal      @db.Decimal(12, 2)
+  maxAmount    Decimal?     @db.Decimal(12, 2)
+  /// Restrict to specific fee head ids; empty means all heads
+  feeHeadIds   String[]     @default([])
+  description  String?
+  validFrom    DateTime?    @db.Date
+  validTo      DateTime?    @db.Date
+  requiresApproval Boolean  @default(true)
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  school       School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  students     StudentDiscount[]
+  invoiceItems InvoiceItem[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId, isActive])
+  @@map("discounts")
+}
+
+model StudentDiscount {
+  id           String    @id @default(uuid()) @db.Uuid
+  studentId    String    @db.Uuid
+  discountId   String    @db.Uuid
+  academicYearId String? @db.Uuid
+  /// Overrides Discount.value when set
+  overrideValue Decimal? @db.Decimal(12, 2)
+  reason       String?
+  approvedById String?   @db.Uuid
+  approvedAt   DateTime?
+  validFrom    DateTime? @db.Date
+  validTo      DateTime? @db.Date
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  student      Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  discount     Discount  @relation(fields: [discountId], references: [id], onDelete: Restrict)
+
+  @@unique([studentId, discountId, academicYearId])
+  @@index([studentId, isActive])
+  @@map("student_discounts")
+}
+
+model Invoice {
+  id             String        @id @default(uuid()) @db.Uuid
+  schoolId       String        @db.Uuid
+  academicYearId String        @db.Uuid
+  studentId      String        @db.Uuid
+  feeStructureId String?       @db.Uuid
+  installmentId  String?       @db.Uuid
+
+  invoiceNumber  String
+  status         InvoiceStatus @default(ISSUED)
+  issueDate      DateTime      @db.Date
+  dueDate        DateTime      @db.Date
+
+  subtotal       Decimal       @default(0) @db.Decimal(12, 2)
+  discountTotal  Decimal       @default(0) @db.Decimal(12, 2)
+  taxTotal       Decimal       @default(0) @db.Decimal(12, 2)
+  lateFee        Decimal       @default(0) @db.Decimal(12, 2)
+  total          Decimal       @default(0) @db.Decimal(12, 2)
+  paidAmount     Decimal       @default(0) @db.Decimal(12, 2)
+  refundedAmount Decimal       @default(0) @db.Decimal(12, 2)
+  balance        Decimal       @default(0) @db.Decimal(12, 2)
+  currency       String        @default("INR")
+
+  notes          String?
+  cancelledAt    DateTime?
+  cancelledById  String?       @db.Uuid
+  cancelReason   String?
+  voidedAt       DateTime?
+  pdfStorageKey  String?
+  lastReminderAt DateTime?
+  reminderCount  Int           @default(0)
+
+  createdById    String?       @db.Uuid
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  school         School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  student        Student        @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  feeStructure   FeeStructure?  @relation(fields: [feeStructureId], references: [id], onDelete: SetNull)
+  installment    FeeInstallment? @relation(fields: [installmentId], references: [id], onDelete: SetNull)
+  items          InvoiceItem[]
+  allocations    PaymentAllocation[]
+  refunds        Refund[]
+  ledgerEntries  LedgerEntry[]
+
+  @@unique([schoolId, invoiceNumber])
+  @@index([schoolId, status, dueDate])
+  @@index([studentId, status])
+  @@index([schoolId, academicYearId, issueDate])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id           String   @id @default(uuid()) @db.Uuid
+  invoiceId    String   @db.Uuid
+  feeHeadId    String?  @db.Uuid
+  discountId   String?  @db.Uuid
+
+  description  String
+  quantity     Decimal  @default(1) @db.Decimal(8, 2)
+  unitAmount   Decimal  @db.Decimal(12, 2)
+  discountAmount Decimal @default(0) @db.Decimal(12, 2)
+  taxPercent   Decimal  @default(0) @db.Decimal(5, 2)
+  taxAmount    Decimal  @default(0) @db.Decimal(12, 2)
+  amount       Decimal  @db.Decimal(12, 2)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  feeHead      FeeHead? @relation(fields: [feeHeadId], references: [id], onDelete: SetNull)
+  discount     Discount? @relation(fields: [discountId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([feeHeadId])
+  @@map("invoice_items")
+}
+
+model Payment {
+  id             String        @id @default(uuid()) @db.Uuid
+  schoolId       String        @db.Uuid
+  studentId      String        @db.Uuid
+
+  receiptNumber  String
+  method         PaymentMethod
+  status         PaymentStatus @default(PENDING)
+  amount         Decimal       @db.Decimal(12, 2)
+  allocatedAmount Decimal      @default(0) @db.Decimal(12, 2)
+  refundedAmount Decimal       @default(0) @db.Decimal(12, 2)
+  currency       String        @default("INR")
+  paidAt         DateTime?
+
+  /// Gateway fields
+  gateway        String?
+  gatewayOrderId String?
+  gatewayPaymentId String?
+  gatewaySignature String?
+  gatewayFee     Decimal?      @db.Decimal(12, 2)
+  gatewayPayload Json?
+
+  /// Offline instrument fields
+  referenceNumber String?
+  bankName       String?
+  chequeNumber   String?
+  chequeDate     DateTime?     @db.Date
+  clearedAt      DateTime?
+
+  /// Guarantees a payment is processed exactly once
+  idempotencyKey String?
+  failureReason  String?
+  notes          String?
+  pdfStorageKey  String?
+
+  collectedById  String?       @db.Uuid
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  school         School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student        Student       @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  allocations    PaymentAllocation[]
+  refunds        Refund[]
+  ledgerEntries  LedgerEntry[]
+
+  @@unique([schoolId, receiptNumber])
+  @@unique([idempotencyKey])
+  @@unique([gatewayPaymentId])
+  @@index([schoolId, status, paidAt])
+  @@index([studentId])
+  @@index([gatewayOrderId])
+  @@map("payments")
+}
+
+/// A payment may settle several invoices; an invoice may be settled by several payments.
+model PaymentAllocation {
+  id        String   @id @default(uuid()) @db.Uuid
+  paymentId String   @db.Uuid
+  invoiceId String   @db.Uuid
+  amount    Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+
+  payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentId, invoiceId])
+  @@index([invoiceId])
+  @@map("payment_allocations")
+}
+
+model Refund {
+  id             String       @id @default(uuid()) @db.Uuid
+  schoolId       String       @db.Uuid
+  paymentId      String       @db.Uuid
+  invoiceId      String?      @db.Uuid
+
+  refundNumber   String
+  amount         Decimal      @db.Decimal(12, 2)
+  currency       String       @default("INR")
+  status         RefundStatus @default(REQUESTED)
+  reason         String
+  method         PaymentMethod?
+
+  gatewayRefundId String?
+  gatewayPayload Json?
+
+  requestedById  String?      @db.Uuid
+  approvedById   String?      @db.Uuid
+  approvedAt     DateTime?
+  processedAt    DateTime?
+  rejectedReason String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  school         School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  payment        Payment      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  invoice        Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  ledgerEntries  LedgerEntry[]
+
+  @@unique([schoolId, refundNumber])
+  @@unique([gatewayRefundId])
+  @@index([schoolId, status])
+  @@index([paymentId])
+  @@map("refunds")
+}
+
+/// Append-only double-entry style journal for every financial movement.
+model LedgerEntry {
+  id          String          @id @default(uuid()) @db.Uuid
+  schoolId    String          @db.Uuid
+  studentId   String?         @db.Uuid
+  invoiceId   String?         @db.Uuid
+  paymentId   String?         @db.Uuid
+  refundId    String?         @db.Uuid
+
+  type        LedgerEntryType
+  /// Positive increases what the student owes, negative decreases it
+  debit       Decimal         @default(0) @db.Decimal(12, 2)
+  credit      Decimal         @default(0) @db.Decimal(12, 2)
+  balanceAfter Decimal?       @db.Decimal(12, 2)
+  currency    String          @default("INR")
+  description String
+  occurredAt  DateTime        @default(now())
+  createdById String?         @db.Uuid
+  metadata    Json            @default("{}")
+  createdAt   DateTime        @default(now())
+
+  school      School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  student     Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  invoice     Invoice?        @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  payment     Payment?        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  refund      Refund?         @relation(fields: [refundId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, occurredAt])
+  @@index([studentId, occurredAt])
+  @@index([invoiceId])
+  @@map("ledger_entries")
+}
+
+/// Per-school monotonic counters for invoice / receipt / refund numbering.
+model NumberSequence {
+  id        String   @id @default(uuid()) @db.Uuid
+  schoolId  String   @db.Uuid
+  /// INVOICE | RECEIPT | REFUND | ADMISSION | CERTIFICATE | TICKET
+  kind      String
+  prefix    String   @default("")
+  /// Scopes the counter, typically the financial or academic year
+  period    String   @default("")
+  nextValue Int      @default(1)
+  padding   Int      @default(5)
+  updatedAt DateTime @updatedAt
+
+  @@unique([schoolId, kind, period])
+  @@map("number_sequences")
+}

@@ -47,6 +47,44 @@ async function call(path, options = {}) {
   return { status: response.status, body: json, headers: response.headers };
 }
 
+/**
+ * Signs in, backing off when the auth rate limiter kicks in.
+ *
+ * The limiter is deliberately strict (10 attempts a minute), so running this
+ * suite repeatedly will hit it. Treating a 429 as a hard failure would make
+ * every later assertion fail on a missing token and hide the real result.
+ */
+/**
+ * Waits until the auth rate limiter has a free slot, so a repeated run of this
+ * suite starts from a clean window instead of measuring the limiter.
+ */
+async function settleRateLimit() {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const probe = await call('/auth/login', {
+      method: 'POST',
+      body: { identifier: 'ratelimit-probe@invalid.local', password: 'not-a-real-password' },
+    });
+    if (probe.status !== 429) return;
+    await new Promise((resolve) => setTimeout(resolve, 20_000));
+  }
+}
+
+async function login(identifier, password, attempt = 1) {
+  const response = await call('/auth/login', {
+    method: 'POST',
+    body: { identifier, password },
+  });
+
+  if (response.status === 429 && attempt <= 3) {
+    const waitMs = 20_000 * attempt;
+    console.log(`  ..    rate limited signing in as ${identifier}; waiting ${waitMs / 1000}s`);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    return login(identifier, password, attempt + 1);
+  }
+
+  return response;
+}
+
 function section(title) {
   console.log(`\n${title}`);
   console.log('-'.repeat(60));
@@ -58,6 +96,11 @@ async function run() {
 
   // -------------------------------------------------------------------------
   section('Authentication');
+
+  // These probes deliberately send bad credentials, which counts against the
+  // auth rate limiter. Back off first so the limiter does not answer instead of
+  // the credential check.
+  await settleRateLimit();
 
   const badLogin = await call('/auth/login', {
     method: 'POST',
@@ -94,33 +137,30 @@ async function run() {
     JSON.stringify(validation.body?.errors ?? []).slice(0, 120),
   );
 
-  const login = await call('/auth/login', {
-    method: 'POST',
-    body: { identifier: 'admin@greenfield.edu', password: 'Admin@123' },
-  });
-  check('school admin can sign in', login.status === 200, `got ${login.status}`);
+  const adminLogin = await login('admin@greenfield.edu', 'Admin@123');
+  check('school admin can sign in', adminLogin.status === 200, `got ${adminLogin.status}`);
   check(
     'success envelope has success/data/message',
-    login.body?.success === true && !!login.body?.data && !!login.body?.message,
+    adminLogin.body?.success === true && !!adminLogin.body?.data && !!adminLogin.body?.message,
   );
   check(
     'custom response message is applied',
-    login.body?.message === 'Signed in successfully',
-    login.body?.message,
+    adminLogin.body?.message === 'Signed in successfully',
+    adminLogin.body?.message,
   );
 
-  const adminToken = login.body?.data?.tokens?.accessToken;
-  const adminSchoolId = login.body?.data?.user?.schoolId;
+  const adminToken = adminLogin.body?.data?.tokens?.accessToken;
+  const adminSchoolId = adminLogin.body?.data?.user?.schoolId;
   check('access token issued', typeof adminToken === 'string' && adminToken.length > 40);
   check(
     'password hash is never returned',
-    !JSON.stringify(login.body).toLowerCase().includes('passwordhash'),
+    !JSON.stringify(adminLogin.body).toLowerCase().includes('passwordhash'),
   );
   check(
     'admin principal carries granular permissions',
-    Array.isArray(login.body?.data?.user?.permissions) &&
-      login.body.data.user.permissions.length > 100,
-    `${login.body?.data?.user?.permissions?.length} permissions`,
+    Array.isArray(adminLogin.body?.data?.user?.permissions) &&
+      adminLogin.body.data.user.permissions.length > 100,
+    `${adminLogin.body?.data?.user?.permissions?.length} permissions`,
   );
 
   const noToken = await call('/students');
@@ -163,10 +203,7 @@ async function run() {
   // -------------------------------------------------------------------------
   section('Authorization (RBAC)');
 
-  const teacherLogin = await call('/auth/login', {
-    method: 'POST',
-    body: { identifier: 'ramesh.iyer@greenfield.edu', password: 'Teacher@123' },
-  });
+  const teacherLogin = await login('ramesh.iyer@greenfield.edu', 'Teacher@123');
   check('teacher can sign in', teacherLogin.status === 200, `got ${teacherLogin.status}`);
   const teacherToken = teacherLogin.body?.data?.tokens?.accessToken;
 
@@ -207,12 +244,21 @@ async function run() {
     `got ${teacherReadsAudit.status}`,
   );
 
-  const parentLogin = await call('/auth/login', {
-    method: 'POST',
-    body: { identifier: process.env.SMOKE_PARENT_EMAIL, password: 'Parent@123' },
-  });
+  // Resolve a real parent account rather than depending on an environment
+  // variable, so the test is self-contained against any seeded database.
+  const guardians = await call('/guardians?limit=1&hasLogin=true', { token: adminToken });
+  const parentEmail =
+    process.env.SMOKE_PARENT_EMAIL ?? guardians.body?.data?.items?.[0]?.email;
+
+  const parentLogin = parentEmail
+    ? await login(parentEmail, 'Parent@123')
+    : { status: 0, body: null };
   const parentToken = parentLogin.body?.data?.tokens?.accessToken;
-  check('parent can sign in', parentLogin.status === 200, `got ${parentLogin.status}`);
+  check(
+    'parent can sign in',
+    parentLogin.status === 200,
+    parentEmail ? `got ${parentLogin.status}` : 'no guardian with a login was found',
+  );
 
   if (parentToken) {
     const parentReadsAllStudents = await call('/students', { token: parentToken });
@@ -236,10 +282,7 @@ async function run() {
   // -------------------------------------------------------------------------
   section('Tenant isolation');
 
-  const superLogin = await call('/auth/login', {
-    method: 'POST',
-    body: { identifier: 'superadmin@schoolerp.local', password: 'SuperAdmin@123' },
-  });
+  const superLogin = await login('superadmin@schoolerp.local', 'SuperAdmin@123');
   check('super admin can sign in', superLogin.status === 200, `got ${superLogin.status}`);
   const superToken = superLogin.body?.data?.tokens?.accessToken;
 
@@ -304,7 +347,7 @@ async function run() {
   // -------------------------------------------------------------------------
   section('Session lifecycle');
 
-  const refreshToken = login.body?.data?.tokens?.refreshToken;
+  const refreshToken = adminLogin.body?.data?.tokens?.refreshToken;
   const refreshed = await call('/auth/refresh', {
     method: 'POST',
     body: { refreshToken },

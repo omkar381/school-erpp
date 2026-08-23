@@ -35,6 +35,10 @@ function createServer() {
     persistent: true,
     // Creating a dedicated OS user is a Linux-only convenience and fails on Windows.
     createPostgresUser: process.platform === 'linux',
+    // initdb otherwise inherits the host locale, which on a Windows machine
+    // yields a WIN1252 cluster that cannot store the rupee sign or any Indic
+    // script. The platform requires both, so the encoding is pinned here.
+    initdbFlags: ['--encoding=UTF8', '--locale=C', '--lc-collate=C', '--lc-ctype=C'],
   });
 }
 

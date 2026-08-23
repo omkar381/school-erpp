@@ -25,6 +25,40 @@ const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? val
 const lower = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
 
+export class SchoolAdminSeedDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
+  firstName!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  lastName?: string;
+
+  @ApiProperty()
+  @IsEmail()
+  @Transform(lower)
+  email!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(/^\+?[0-9]{10,15}$/)
+  phone?: string;
+
+  @ApiPropertyOptional({
+    description: 'Leave blank to auto-generate and email a temporary password',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  password?: string;
+}
+
 export class CreateSchoolDto {
   @ApiProperty({ example: 'Greenfield International School' })
   @IsString()
@@ -170,39 +204,6 @@ export class CreateSchoolDto {
   admin?: SchoolAdminSeedDto;
 }
 
-export class SchoolAdminSeedDto {
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(80)
-  firstName!: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(80)
-  lastName?: string;
-
-  @ApiProperty()
-  @IsEmail()
-  @Transform(lower)
-  email!: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @Matches(/^\+?[0-9]{10,15}$/)
-  phone?: string;
-
-  @ApiPropertyOptional({
-    description: 'Leave blank to auto-generate and email a temporary password',
-  })
-  @IsOptional()
-  @IsString()
-  @MinLength(8)
-  @MaxLength(128)
-  password?: string;
-}
 
 export class UpdateSchoolDto extends PartialType(
   OmitType(CreateSchoolDto, ['code', 'planCode', 'admin'] as const),

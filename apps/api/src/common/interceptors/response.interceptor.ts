@@ -1,4 +1,10 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import {
+  CallHandler,
+  ExecutionContext,
+  Injectable,
+  NestInterceptor,
+  SetMetadata,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Observable, map } from 'rxjs';
 import type { Request } from 'express';
@@ -6,12 +12,18 @@ import type { Request } from 'express';
 export const RESPONSE_MESSAGE_KEY = 'response:message';
 export const SKIP_ENVELOPE_KEY = 'response:skipEnvelope';
 
-/** Overrides the default success message for a route. */
+/**
+ * Overrides the default success message for a route.
+ *
+ * These use SetMetadata rather than Reflect.metadata: Reflect.metadata attaches
+ * to the prototype under the property key, whereas Nest's Reflector reads
+ * metadata from the handler function itself, so the value would never be found.
+ */
 export const ResponseMessage = (message: string) =>
-  Reflect.metadata(RESPONSE_MESSAGE_KEY, message);
+  SetMetadata(RESPONSE_MESSAGE_KEY, message);
 
 /** Returns the handler's value verbatim (file downloads, webhooks, health checks). */
-export const SkipEnvelope = () => Reflect.metadata(SKIP_ENVELOPE_KEY, true);
+export const SkipEnvelope = () => SetMetadata(SKIP_ENVELOPE_KEY, true);
 
 const DEFAULT_MESSAGES: Record<string, string> = {
   GET: 'Request completed successfully',

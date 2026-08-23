@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    // Incremental builds combined with nest-cli's deleteOutDir can skip
+    // re-emitting files that tsc still believes are up to date.
+    "incremental": false,
+    "sourceMap": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test", "prisma", "**/*.spec.ts", "**/*.e2e-spec.ts"]
+}

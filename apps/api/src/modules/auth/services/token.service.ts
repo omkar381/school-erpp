@@ -133,6 +133,7 @@ export class TokenService {
         familyId: true,
         deviceId: true,
         revokedAt: true,
+        revokedReason: true,
         expiresAt: true,
       },
     });
@@ -152,7 +153,28 @@ export class TokenService {
     }
 
     if (session.revokedAt) {
-      await this.revokeFamily(session.familyId, 'revoked_session_reuse');
+      // A session revoked because it was *rotated* means the caller presented a
+      // token that has already been exchanged — the same signal as a missing
+      // row, and equally a sign of theft. Anything else (logout, password
+      // change, suspension) is a legitimate revocation, so the two are reported
+      // differently even though both kill the family.
+      const wasRotated = session.revokedReason === 'rotated';
+      await this.revokeFamily(
+        session.familyId,
+        wasRotated ? 'refresh_token_reuse_detected' : 'revoked_session_reuse',
+      );
+
+      if (wasRotated) {
+        this.log.warn('Rotated refresh token replayed; token family revoked', {
+          userId: session.userId,
+          familyId: session.familyId,
+        });
+        throw new UnauthorizedError(
+          'This session is no longer valid. Please sign in again.',
+          ErrorCode.REFRESH_TOKEN_REUSED,
+        );
+      }
+
       throw new UnauthorizedError('This session has been signed out', ErrorCode.SESSION_REVOKED);
     }
 

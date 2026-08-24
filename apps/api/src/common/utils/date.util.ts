@@ -35,15 +35,37 @@ export function dayBoundsInZone(
   return { start: day.startOf('day').toUTC().toJSDate(), end: day.endOf('day').toUTC().toJSDate() };
 }
 
+/** Looks like an IANA zone ("Asia/Kolkata"), not a Luxon format string. */
+const IANA_ZONE = /^[A-Za-z]+\/[A-Za-z_+-]+$/;
+
 export function formatDate(
   value: Date | string | null | undefined,
   format = 'dd MMM yyyy',
   timezone = DEFAULT_TIMEZONE,
 ): string {
   if (!value) return '';
+
+  // Passing a timezone where the format belongs produces plausible-looking
+  // nonsense rather than an error, because Luxon reads every letter of
+  // "Asia/Kolkata" as a format token. Fail loudly instead.
+  if (IANA_ZONE.test(format)) {
+    throw new Error(
+      `formatDate received "${format}" as its format. It takes ` +
+        '(value, format, timezone) — use formatDateIn(value, timezone) instead.',
+    );
+  }
+
   const dt =
     value instanceof Date ? DateTime.fromJSDate(value) : DateTime.fromISO(value, { zone: 'utc' });
   return dt.setZone(timezone).toFormat(format);
+}
+
+/** The default date format, rendered in a specific timezone. */
+export function formatDateIn(
+  value: Date | string | null | undefined,
+  timezone = DEFAULT_TIMEZONE,
+): string {
+  return formatDate(value, 'dd MMM yyyy', timezone);
 }
 
 export function formatDateTime(

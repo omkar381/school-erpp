@@ -47,6 +47,21 @@ export const CORE_MODULES: ModuleKey[] = [
   MODULES.DOCUMENTS,
 ];
 
+/**
+ * Whether a school may use a module.
+ *
+ * Core modules are always on; everything else has to be explicitly enabled, so
+ * an absent key means disabled rather than inherited.
+ */
+export function isModuleEnabled(
+  enabledModules: unknown,
+  module: string,
+): boolean {
+  if (CORE_MODULES.includes(module as ModuleKey)) return true;
+  const modules = (enabledModules as Record<string, boolean> | null) ?? {};
+  return modules[module] === true;
+}
+
 export const MODULE_LABELS: Record<ModuleKey, string> = {
   core: 'Core',
   students: 'Student Management',

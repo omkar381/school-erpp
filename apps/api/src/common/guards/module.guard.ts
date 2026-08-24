@@ -1,7 +1,12 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../database/prisma.service';
-import { CORE_MODULES, MODULE_LABELS, type ModuleKey } from '../constants/modules';
+import {
+  CORE_MODULES,
+  MODULE_LABELS,
+  isModuleEnabled,
+  type ModuleKey,
+} from '../constants/modules';
 import { IS_PUBLIC_KEY, MODULE_KEY } from '../decorators';
 import { ForbiddenError } from '../exceptions/app.exception';
 import { ErrorCode } from '../exceptions/error-codes';
@@ -48,7 +53,7 @@ export class ModuleGuard implements CanActivate {
 
     const modules = await this.loadModules(schoolId);
 
-    if (modules[required] !== true) {
+    if (!isModuleEnabled(modules, required)) {
       throw new ForbiddenError(
         `The ${MODULE_LABELS[required] ?? required} module is not enabled for your school`,
         ErrorCode.MODULE_DISABLED,

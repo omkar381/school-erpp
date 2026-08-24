@@ -23,7 +23,6 @@ import {
 import { PERMISSIONS } from '../../common/constants/permissions';
 import { ResponseMessage } from '../../common/interceptors/response.interceptor';
 import { ForbiddenError } from '../../common/exceptions/app.exception';
-import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { SchoolsService } from './schools.service';
 import {
   CreateSchoolDto,

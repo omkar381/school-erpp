@@ -22,6 +22,7 @@ import { Random, addDays, dateOnly, schoolDaysBetween } from './helpers';
 import type { SchoolSeedResult } from './school.seed';
 import type { AcademicsSeedResult } from './academics.seed';
 import type { PeopleSeedResult } from './people.seed';
+import { seedInventory } from './inventory.seed';
 
 const WEEKDAYS: DayOfWeek[] = [
   DayOfWeek.MONDAY,
@@ -52,6 +53,7 @@ export async function seedOperations(
   await seedNotices(prisma, school, people);
   await seedLibrary(prisma, school, people, random);
   await seedTransport(prisma, school, people, random);
+  await seedInventory(prisma, school, random);
   await seedEvents(prisma, school, people);
 
   void examId;

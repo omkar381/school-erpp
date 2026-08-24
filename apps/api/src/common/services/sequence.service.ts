@@ -11,6 +11,7 @@ export type SequenceKind =
   | 'TICKET'
   | 'ID_CARD'
   | 'PURCHASE'
+  | 'ACCESSION'
   | 'LIBRARY_CARD'
   | 'EMPLOYEE';
 
@@ -31,6 +32,7 @@ const DEFAULT_PREFIXES: Record<SequenceKind, string> = {
   TICKET: 'TKT',
   ID_CARD: 'IDC',
   PURCHASE: 'PO',
+  ACCESSION: 'ACC',
   LIBRARY_CARD: 'LIB',
   EMPLOYEE: 'EMP',
 };

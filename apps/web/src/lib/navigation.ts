@@ -1,0 +1,180 @@
+import {
+  BadgeIndianRupee,
+  BookOpen,
+  Boxes,
+  Bus,
+  CalendarClock,
+  CalendarDays,
+  ClipboardCheck,
+  FileBarChart,
+  FileText,
+  GraduationCap,
+  LayoutDashboard,
+  LifeBuoy,
+  Megaphone,
+  MessageSquare,
+  PlaneTakeoff,
+  Settings,
+  ShieldCheck,
+  UserCog,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
+
+export interface NavItem {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  /** Any one of these permissions reveals the item. */
+  permissions?: string[];
+  /** The item is hidden when the school has this module switched off. */
+  module?: string;
+  /** Rendered as a count chip; resolved by the shell, not hard-coded. */
+  badgeKey?: 'pendingLeave' | 'unreadMessages' | 'openTickets';
+}
+
+export interface NavSection {
+  label: string;
+  items: NavItem[];
+}
+
+/**
+ * The sidebar.
+ *
+ * Grouped by what an administrator is doing rather than by which backend
+ * module owns the data — "Fees" and "Payments" are one heading here because
+ * they are one job. Every item declares the permission that reveals it; the
+ * server still enforces access, this only keeps the sidebar honest.
+ */
+export const NAVIGATION: NavSection[] = [
+  {
+    label: 'Overview',
+    items: [{ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard }],
+  },
+  {
+    label: 'People',
+    items: [
+      { label: 'Students', href: '/students', icon: GraduationCap, permissions: ['students.view'] },
+      { label: 'Parents', href: '/guardians', icon: Users, permissions: ['guardians.view'] },
+      { label: 'Staff', href: '/staff', icon: UserCog, permissions: ['staff.view'] },
+    ],
+  },
+  {
+    label: 'Academics',
+    items: [
+      {
+        label: 'Attendance',
+        href: '/attendance',
+        icon: ClipboardCheck,
+        permissions: ['attendance.view', 'attendance.mark'],
+      },
+      {
+        label: 'Timetable',
+        href: '/timetable',
+        icon: CalendarClock,
+        permissions: ['timetable.view'],
+        module: 'timetable',
+      },
+      {
+        label: 'Homework',
+        href: '/homework',
+        icon: FileText,
+        permissions: ['homework.view'],
+        module: 'homework',
+      },
+      {
+        label: 'Examinations',
+        href: '/exams',
+        icon: BookOpen,
+        permissions: ['exams.view'],
+        module: 'exams',
+      },
+      {
+        label: 'Classes & Subjects',
+        href: '/academics',
+        icon: CalendarDays,
+        permissions: ['academics.view', 'classes.view'],
+      },
+    ],
+  },
+  {
+    label: 'Finance',
+    items: [
+      {
+        label: 'Fees',
+        href: '/fees',
+        icon: BadgeIndianRupee,
+        permissions: ['fees.view'],
+        module: 'fees',
+      },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      {
+        label: 'Transport',
+        href: '/transport',
+        icon: Bus,
+        permissions: ['transport.view'],
+        module: 'transport',
+      },
+      {
+        label: 'Library',
+        href: '/library',
+        icon: BookOpen,
+        permissions: ['library.view'],
+        module: 'library',
+      },
+      {
+        label: 'Inventory',
+        href: '/inventory',
+        icon: Boxes,
+        permissions: ['inventory.view'],
+        module: 'inventory',
+      },
+      {
+        label: 'Leave',
+        href: '/leave',
+        icon: PlaneTakeoff,
+        permissions: ['leave.view', 'leave.view.all'],
+        badgeKey: 'pendingLeave',
+      },
+    ],
+  },
+  {
+    label: 'Communication',
+    items: [
+      { label: 'Notices', href: '/notices', icon: Megaphone, permissions: ['notices.view'] },
+      {
+        label: 'Messages',
+        href: '/messages',
+        icon: MessageSquare,
+        permissions: ['messages.view'],
+        badgeKey: 'unreadMessages',
+      },
+      { label: 'Events', href: '/events', icon: CalendarDays, permissions: ['events.view'] },
+    ],
+  },
+  {
+    label: 'Insights',
+    items: [
+      { label: 'Reports', href: '/reports', icon: FileBarChart, permissions: ['reports.view'] },
+      { label: 'Audit log', href: '/audit', icon: ShieldCheck, permissions: ['audit_logs.view'] },
+    ],
+  },
+  {
+    label: 'Administration',
+    items: [
+      { label: 'Settings', href: '/settings', icon: Settings, permissions: ['school.view', 'school.settings.update', 'roles.view'] },
+      { label: 'Support', href: '/support', icon: LifeBuoy, permissions: ['support.tickets.view'] },
+    ],
+  },
+];
+
+/** Human labels for the first path segment, used to build breadcrumbs. */
+export const ROUTE_LABELS: Record<string, string> = Object.fromEntries(
+  NAVIGATION.flatMap((section) =>
+    section.items.map((item) => [item.href.replace(/^\//, ''), item.label]),
+  ),
+);

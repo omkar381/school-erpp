@@ -1,0 +1,420 @@
+=== Notifications ===
+GET   /notifications
+GET   /notifications/unread-count
+PATCH /notifications/{id}/read
+POST  /notifications/read-all
+PATCH /notifications/{id}/archive
+GET   /notifications/preferences
+PATCH /notifications/preferences
+
+=== Audit Logs ===
+GET   /audit-logs
+GET   /audit-logs/entity/{entity}/{entityId}
+GET   /audit-logs/user/{userId}
+
+=== Health ===
+GET   /health
+
+=== Authentication ===
+POST  /auth/login
+POST  /auth/otp/request
+POST  /auth/otp/verify
+POST  /auth/refresh
+POST  /auth/logout
+POST  /auth/logout-all
+GET   /auth/me
+GET   /auth/sessions
+DELETE/auth/sessions/{id}
+POST  /auth/forgot-password
+POST  /auth/reset-password
+POST  /auth/change-password
+POST  /auth/verify-email
+POST  /auth/resend-verification
+POST  /auth/devices
+DELETE/auth/devices/{token}
+
+=== Schools ===
+POST  /schools
+GET   /schools
+GET   /schools/current
+PATCH /schools/current
+GET   /schools/current/settings
+PATCH /schools/current/settings
+GET   /schools/by-slug/{slug}
+GET   /schools/{id}
+PATCH /schools/{id}
+DELETE/schools/{id}
+PATCH /schools/current/branding
+PATCH /schools/current/modules
+PATCH /schools/current/timings
+PATCH /schools/current/onboarding
+PATCH /schools/{id}/status
+PATCH /schools/{id}/modules
+
+=== Users ===
+GET   /users/me
+PATCH /users/me
+GET   /users/statistics
+GET   /users
+POST  /users
+GET   /users/{id}
+PATCH /users/{id}
+DELETE/users/{id}
+PATCH /users/{id}/status
+POST  /users/{id}/reset-password
+POST  /users/{id}/unlock
+
+=== Roles & Permissions ===
+GET   /permissions
+GET   /roles
+POST  /roles
+GET   /roles/{id}
+PATCH /roles/{id}
+DELETE/roles/{id}
+PATCH /roles/{id}/permissions
+POST  /roles/{id}/reset
+GET   /users/{userId}/permissions
+PATCH /users/{userId}/permissions
+PATCH /users/{userId}/roles
+
+=== Academics ===
+GET   /academics/years
+POST  /academics/years
+GET   /academics/years/current
+GET   /academics/years/{id}
+PATCH /academics/years/{id}
+DELETE/academics/years/{id}
+POST  /academics/years/{id}/set-current
+PATCH /academics/years/{id}/lock
+GET   /academics/classes
+POST  /academics/classes
+GET   /academics/classes/{id}
+PATCH /academics/classes/{id}
+DELETE/academics/classes/{id}
+PATCH /academics/classes/{id}/subjects
+GET   /academics/sections
+POST  /academics/sections
+PATCH /academics/sections/{id}
+DELETE/academics/sections/{id}
+GET   /academics/subjects
+POST  /academics/subjects
+GET   /academics/subjects/{id}
+PATCH /academics/subjects/{id}
+DELETE/academics/subjects/{id}
+POST  /academics/subject-teachers
+DELETE/academics/subject-teachers/{id}
+GET   /academics/teachers/{staffId}/workload
+GET   /academics/departments
+POST  /academics/departments
+PATCH /academics/departments/{id}
+DELETE/academics/departments/{id}
+GET   /academics/designations
+POST  /academics/designations
+PATCH /academics/designations/{id}
+DELETE/academics/designations/{id}
+GET   /academics/rooms
+POST  /academics/rooms
+PATCH /academics/rooms/{id}
+DELETE/academics/rooms/{id}
+GET   /academics/holidays
+POST  /academics/holidays
+PATCH /academics/holidays/{id}
+DELETE/academics/holidays/{id}
+GET   /academics/calendar
+GET   /academics/working-days
+
+=== Students ===
+GET   /students
+POST  /students
+GET   /students/statistics
+GET   /students/import/template
+GET   /students/export
+GET   /students/{id}
+PATCH /students/{id}
+DELETE/students/{id}
+GET   /students/{id}/summary
+PATCH /students/{id}/status
+POST  /students/{id}/transfer
+POST  /students/promote
+POST  /students/{id}/guardians
+DELETE/students/{id}/guardians/{guardianId}
+POST  /students/import
+
+=== Guardians ===
+GET   /guardians/my-children
+GET   /guardians/statistics
+GET   /guardians
+POST  /guardians
+GET   /guardians/{id}
+PATCH /guardians/{id}
+DELETE/guardians/{id}
+POST  /guardians/{id}/create-login
+
+=== Staff ===
+GET   /staff/me
+GET   /staff/me/attendance/today
+POST  /staff/me/attendance/check-in
+POST  /staff/me/attendance/check-out
+GET   /staff/me/attendance/history
+GET   /staff/teachers
+GET   /staff/statistics
+GET   /staff/attendance
+POST  /staff/attendance
+GET   /staff/attendance/register
+GET   /staff/attendance/monthly/{year}/{month}
+GET   /staff/{id}/attendance
+GET   /staff
+POST  /staff
+GET   /staff/{id}
+PATCH /staff/{id}
+DELETE/staff/{id}
+PATCH /staff/{id}/employment-status
+
+=== Attendance ===
+GET   /attendance/register
+GET   /attendance/overview
+GET   /attendance/pending
+GET   /attendance/reports/low-attendance
+GET   /attendance/students/{studentId}
+GET   /attendance
+POST  /attendance
+PATCH /attendance/{id}
+
+=== Timetable ===
+GET   /timetable/periods
+POST  /timetable/periods
+DELETE/timetable/periods/{id}
+GET   /timetable/me/today
+GET   /timetable/me/week
+GET   /timetable/sections/{sectionId}
+GET   /timetable/teachers/{staffId}
+GET   /timetable/rooms/{roomId}
+GET   /timetable/students/{studentId}/today
+POST  /timetable/check-conflicts
+POST  /timetable/slots
+PATCH /timetable/slots/{id}
+DELETE/timetable/slots/{id}
+POST  /timetable/sections/bulk
+GET   /timetable/substitutions
+POST  /timetable/substitutions
+GET   /timetable/substitutions/available-teachers
+DELETE/timetable/substitutions/{id}
+
+=== Homework ===
+GET   /homework
+POST  /homework
+GET   /homework/students/{studentId}
+GET   /homework/students/{studentId}/pending-count
+GET   /homework/{id}
+PATCH /homework/{id}
+DELETE/homework/{id}
+POST  /homework/{id}/submit
+PATCH /homework/submissions/{submissionId}/review
+POST  /homework/{id}/review-batch
+
+=== Assignments ===
+GET   /assignments
+POST  /assignments
+GET   /assignments/students/{studentId}
+GET   /assignments/{id}
+PATCH /assignments/{id}
+DELETE/assignments/{id}
+POST  /assignments/{id}/submit
+PATCH /assignments/submissions/{submissionId}/grade
+
+=== Examinations ===
+GET   /exams
+POST  /exams
+GET   /exams/report-cards
+GET   /exams/report-cards/{id}
+GET   /exams/students/{studentId}
+GET   /exams/students/{studentId}/next
+GET   /exams/students/{studentId}/report-cards
+GET   /exams/{id}
+PATCH /exams/{id}
+DELETE/exams/{id}
+PATCH /exams/{id}/status
+PATCH /exams/{id}/classes
+PATCH /exams/subjects/{examSubjectId}
+GET   /exams/{id}/datesheet
+POST  /exams/schedules
+DELETE/exams/schedules/{id}
+GET   /exams/subjects/{examSubjectId}/entry-sheet
+POST  /exams/marks
+PATCH /exams/marks/{markId}/correct
+GET   /exams/marks/{markId}/revisions
+PATCH /exams/{id}/lock
+POST  /exams/{id}/publish
+GET   /exams/{id}/results/{studentId}
+GET   /exams/{id}/results
+POST  /exams/report-cards/generate
+PATCH /exams/report-cards/{id}/remarks
+POST  /exams/report-cards/publish
+
+=== Fees ===
+GET   /fees/dashboard
+GET   /fees/reports/collection
+GET   /fees/reports/outstanding
+GET   /fees/heads
+POST  /fees/heads
+PATCH /fees/heads/{id}
+DELETE/fees/heads/{id}
+GET   /fees/structures
+POST  /fees/structures
+GET   /fees/structures/{id}
+PATCH /fees/structures/{id}
+DELETE/fees/structures/{id}
+GET   /fees/discounts
+POST  /fees/discounts
+POST  /fees/discounts/grant
+DELETE/fees/discounts/grants/{id}
+GET   /fees/invoices
+POST  /fees/invoices
+GET   /fees/invoices/{id}
+POST  /fees/invoices/generate
+POST  /fees/invoices/{id}/cancel
+POST  /fees/apply-late-fees
+GET   /fees/students/{studentId}/ledger
+
+=== Payments ===
+GET   /payments/gateway/config
+POST  /payments/orders
+POST  /payments/verify
+POST  /payments/reconcile
+GET   /payments
+GET   /payments/refunds
+POST  /payments/refunds
+GET   /payments/{id}
+POST  /payments/collect
+POST  /payments/{id}/clear
+POST  /payments/{id}/fail
+POST  /payments/refunds/{id}/decide
+
+=== Notices ===
+GET   /notices/feed
+GET   /notices
+POST  /notices
+GET   /notices/{id}
+PATCH /notices/{id}
+DELETE/notices/{id}
+GET   /notices/{id}/read-report
+POST  /notices/{id}/publish
+POST  /notices/{id}/read
+
+=== Messaging ===
+GET   /chat/contacts
+GET   /chat/conversations
+POST  /chat/conversations
+GET   /chat/conversations/{id}
+GET   /chat/conversations/{id}/messages
+POST  /chat/conversations/{id}/messages
+POST  /chat/conversations/{id}/read
+DELETE/chat/messages/{id}
+POST  /chat/messages/{id}/report
+GET   /chat/moderation/flagged
+PATCH /chat/conversations/{id}/lock
+
+=== Leave ===
+GET   /leave/types
+POST  /leave/types
+GET   /leave/me/balances
+GET   /leave/staff/{staffId}/balances
+POST  /leave/balances/allocate/{year}
+GET   /leave/pending-approvals
+GET   /leave
+POST  /leave
+GET   /leave/{id}
+PATCH /leave/{id}/review
+PATCH /leave/{id}/cancel
+
+=== Events ===
+GET   /events/public/{schoolSlug}
+GET   /events
+POST  /events
+GET   /events/{id}
+PATCH /events/{id}
+DELETE/events/{id}
+POST  /events/{id}/register
+DELETE/events/{id}/register/{studentId}
+POST  /events/{id}/attendance
+
+=== Transport ===
+GET   /transport/statistics
+GET   /transport/vehicles
+POST  /transport/vehicles
+PATCH /transport/vehicles/{id}
+GET   /transport/drivers
+POST  /transport/drivers
+GET   /transport/routes
+POST  /transport/routes
+GET   /transport/routes/{id}
+DELETE/transport/routes/{id}
+PATCH /transport/routes/{id}/stops
+POST  /transport/assignments
+DELETE/transport/assignments/{studentId}
+GET   /transport/students/{studentId}
+POST  /transport/vehicles/{id}/position
+GET   /transport/vehicles/{id}/position
+
+=== Library ===
+GET   /library/statistics
+GET   /library/books
+POST  /library/books
+GET   /library/books/{id}
+POST  /library/books/{id}/copies
+GET   /library/issues
+POST  /library/issues
+POST  /library/issues/{id}/return
+POST  /library/issues/{id}/renew
+GET   /library/students/{studentId}/history
+GET   /library/fines
+POST  /library/fines/{id}/settle
+POST  /library/fines/{id}/waive
+POST  /library/overdue-scan
+
+=== Inventory ===
+GET   /inventory/statistics
+GET   /inventory/categories
+POST  /inventory/categories
+DELETE/inventory/categories/{id}
+GET   /inventory/suppliers
+POST  /inventory/suppliers
+PATCH /inventory/suppliers/{id}
+GET   /inventory/items
+POST  /inventory/items
+GET   /inventory/items/low-stock
+GET   /inventory/items/{id}
+PATCH /inventory/items/{id}
+POST  /inventory/items/{id}/stock-in
+POST  /inventory/items/{id}/stock-out
+POST  /inventory/items/{id}/write-off
+POST  /inventory/items/{id}/adjust
+GET   /inventory/ledger
+GET   /inventory/reports/consumption
+GET   /inventory/purchases
+POST  /inventory/purchases
+GET   /inventory/purchases/{id}
+POST  /inventory/purchases/{id}/receive
+POST  /inventory/purchases/{id}/cancel
+
+=== Documents ===
+GET   /documents/invoices/{id}
+GET   /documents/receipts/{id}
+GET   /documents/fee-statements/{studentId}
+GET   /documents/report-cards/{id}
+GET   /documents/certificates/{id}
+POST  /documents/id-cards/students
+POST  /documents/id-cards/staff
+
+=== Reports ===
+GET   /reports
+POST  /reports/run
+POST  /reports/export
+GET   /reports/export
+
+=== Dashboard ===
+GET   /dashboard
+
+=== Search ===
+GET   /search
+GET   /search/sources

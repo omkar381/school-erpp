@@ -14,6 +14,7 @@ import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { AppLogger } from '../../common/logger/app-logger.service';
 import { BadRequestError } from '../../common/exceptions/app.exception';
+import { UsageService } from '../platform/usage.service';
 import { ErrorCode } from '../../common/exceptions/error-codes';
 
 export interface UploadInput {
@@ -67,6 +68,7 @@ export class StorageService implements OnModuleInit {
 
   constructor(
     private readonly config: ConfigService,
+    private readonly usage: UsageService,
     logger: AppLogger,
   ) {
     this.log = logger.child('StorageService');
@@ -157,6 +159,12 @@ export class StorageService implements OnModuleInit {
 
   async upload(input: UploadInput): Promise<StoredFile> {
     this.validate(input.buffer, input.originalName, input.mimeType);
+
+    // Every file the product stores comes through here, so this is the one
+    // place the subscription's storage allowance has to be honoured.
+    if (input.schoolId) {
+      await this.usage.assertWithinLimit(input.schoolId, 'storage', input.buffer.length / (1024 * 1024));
+    }
 
     const safeName = this.sanitizeFileName(input.originalName);
     const storageKey = this.buildKey(input.folder, safeName, input.schoolId);

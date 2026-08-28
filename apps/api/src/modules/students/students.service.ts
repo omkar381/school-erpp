@@ -22,6 +22,7 @@ import { parseDateOnly } from '../../common/utils/date.util';
 import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
 import { AcademicYearService } from '../academics/services/academic-year.service';
+import { UsageService } from '../platform/usage.service';
 import type {
   ChangeStudentStatusDto,
   CreateStudentDto,
@@ -71,6 +72,7 @@ export class StudentsService {
     private readonly academicYears: AcademicYearService,
     private readonly sequences: SequenceService,
     private readonly audit: AuditService,
+    private readonly usage: UsageService,
     logger: AppLogger,
   ) {
     this.log = logger.child('StudentsService');
@@ -298,6 +300,11 @@ export class StudentsService {
    * would break fee generation and attendance, so this is all-or-nothing.
    */
   async create(schoolId: string, dto: CreateStudentDto) {
+    // The subscription's student limit is checked here rather than in the
+    // controller, so every path that admits a student — the form, the bulk
+    // import, an integration — passes the same gate.
+    await this.usage.assertWithinLimit(schoolId, 'students');
+
     const academicYearId = await this.academicYears.resolveId(schoolId, dto.academicYearId);
 
     const section = await this.prisma.section.findFirst({

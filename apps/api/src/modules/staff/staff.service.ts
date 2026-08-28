@@ -13,6 +13,7 @@ import { SequenceService } from '../../common/services/sequence.service';
 import { parseDateOnly } from '../../common/utils/date.util';
 import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
+import { UsageService } from '../platform/usage.service';
 import type {
   ChangeEmploymentStatusDto,
   CreateStaffDto,
@@ -38,6 +39,7 @@ export class StaffService {
     private readonly users: UsersService,
     private readonly sequences: SequenceService,
     private readonly audit: AuditService,
+    private readonly usage: UsageService,
     logger: AppLogger,
   ) {
     this.log = logger.child('StaffService');
@@ -208,6 +210,8 @@ export class StaffService {
   // -------------------------------------------------------------------------
 
   async create(schoolId: string, dto: CreateStaffDto) {
+    await this.usage.assertWithinLimit(schoolId, 'staff');
+
     if (dto.employeeId) {
       const taken = await this.prisma.staff.count({
         where: { schoolId, employeeId: dto.employeeId },

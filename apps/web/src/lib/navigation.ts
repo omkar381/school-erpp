@@ -1,11 +1,13 @@
 import {
   BadgeIndianRupee,
+  Building2,
   BookOpen,
   Boxes,
   Bus,
   CalendarClock,
   CalendarDays,
   ClipboardCheck,
+  CreditCard,
   FileBarChart,
   FileText,
   GraduationCap,
@@ -16,6 +18,7 @@ import {
   PlaneTakeoff,
   Settings,
   ShieldCheck,
+  Sparkles,
   UserCog,
   Users,
   type LucideIcon,
@@ -167,14 +170,65 @@ export const NAVIGATION: NavSection[] = [
     label: 'Administration',
     items: [
       { label: 'Settings', href: '/settings', icon: Settings, permissions: ['school.view', 'school.settings.update', 'roles.view'] },
+      {
+        label: 'Subscription',
+        href: '/settings/subscription',
+        icon: CreditCard,
+        permissions: ['school.view'],
+      },
       { label: 'Support', href: '/support', icon: LifeBuoy, permissions: ['support.tickets.view'] },
+    ],
+  },
+  {
+    // Only the super administrator holds `platform.*`, so this whole section
+    // is invisible to every school-scoped user. The server enforces it too.
+    label: 'Platform',
+    items: [
+      {
+        label: 'Overview',
+        href: '/super-admin',
+        icon: Sparkles,
+        permissions: ['platform.analytics.view'],
+      },
+      {
+        label: 'Schools',
+        href: '/super-admin/schools',
+        icon: Building2,
+        permissions: ['platform.schools.view'],
+      },
+      {
+        label: 'Plans',
+        href: '/super-admin/plans',
+        icon: BadgeIndianRupee,
+        permissions: ['platform.plans.manage'],
+      },
+      {
+        label: 'Subscriptions',
+        href: '/super-admin/subscriptions',
+        icon: CreditCard,
+        permissions: ['platform.subscriptions.manage'],
+      },
+      {
+        label: 'Support desk',
+        href: '/super-admin/support',
+        icon: LifeBuoy,
+        permissions: ['platform.analytics.view'],
+        badgeKey: 'openTickets',
+      },
     ],
   },
 ];
 
-/** Human labels for the first path segment, used to build breadcrumbs. */
-export const ROUTE_LABELS: Record<string, string> = Object.fromEntries(
-  NAVIGATION.flatMap((section) =>
-    section.items.map((item) => [item.href.replace(/^\//, ''), item.label]),
+/** Human labels for a path segment, used to build breadcrumbs. */
+export const ROUTE_LABELS: Record<string, string> = {
+  ...Object.fromEntries(
+    NAVIGATION.flatMap((section) =>
+      section.items.map((item) => [item.href.replace(/^\//, ''), item.label]),
+    ),
   ),
-);
+  'super-admin': 'Platform',
+  schools: 'Schools',
+  plans: 'Plans',
+  subscriptions: 'Subscriptions',
+  subscription: 'Subscription',
+};

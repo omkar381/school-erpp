@@ -1,137 +1,277 @@
 'use client';
 
-import { LifeBuoy } from 'lucide-react';
-import { humanise } from '@erp/shared-types';
-import { useListQuery } from '@/hooks/use-list-query';
-import { formatAgo, formatDate } from '@/lib/dates';
+import * as React from 'react';
+import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
+import { CheckCircle2, Inbox, Paperclip, Plus, X } from 'lucide-react';
+import { api, uploadFile } from '@/lib/api';
+import { useAction } from '@/hooks/use-action';
+import { useAuthStore } from '@/lib/auth-store';
+import { formatNumber } from '@/lib/utils';
+import {
+  formatBytes,
+  type TicketAttachment,
+  type TicketOptions,
+  type TicketStats,
+} from '@/lib/platform';
 import { PageHeader } from '@/components/layout/page-header';
-import { StatusBadge } from '@/components/ui/badge';
-import { DataTable, type Column } from '@/components/ui/data-table';
-import { FilterBar, FilterSelect } from '@/components/ui/filter-bar';
-import { EmptyState } from '@/components/ui/states';
-
-interface TicketRow {
-  id: string;
-  ticketNumber: string;
-  subject: string;
-  category: string;
-  priority: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  raisedBy?: { firstName: string; lastName: string | null; email: string | null } | null;
-  assignedTo?: { firstName: string; lastName: string | null } | null;
-}
-
-const STATUSES = ['OPEN', 'IN_PROGRESS', 'WAITING', 'RESOLVED', 'CLOSED'];
-const PRIORITIES = ['LOW', 'NORMAL', 'IMPORTANT', 'URGENT'];
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Dialog, Modal } from '@/components/ui/dialog';
+import { Field, FieldRow } from '@/components/ui/field';
+import { Input, Select, Textarea } from '@/components/ui/input';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { TicketList } from '@/components/support/ticket-list';
 
 export default function SupportPage() {
-  const list = useListQuery<TicketRow>('support-tickets', '/support/tickets', {
-    initialSortBy: 'createdAt',
-    initialSortOrder: 'desc',
+  const router = useRouter();
+  const [creating, setCreating] = React.useState(false);
+
+  const canManage = useAuthStore((state) =>
+    Boolean(state.user?.isSuperAdmin || state.user?.permissions.includes('support.tickets.manage')),
+  );
+
+  const { data: options } = useQuery({
+    queryKey: ['support', 'categories'],
+    queryFn: () => api.get<TicketOptions>('/support/categories'),
+    staleTime: 60 * 60_000,
   });
 
-  const columns: Column<TicketRow>[] = [
-    {
-      key: 'ticketNumber',
-      header: 'Ticket',
-      cell: (row) => (
-        <span className="min-w-0">
-          <span className="block truncate font-medium">{row.subject}</span>
-          <span className="block truncate text-2xs tabular text-[var(--color-ink-muted)]">
-            {row.ticketNumber} · {humanise(row.category)}
-          </span>
-        </span>
-      ),
-    },
-    {
-      key: 'raisedBy',
-      header: 'Raised by',
-      hideOnMobile: true,
-      cell: (row) =>
-        row.raisedBy ? `${row.raisedBy.firstName} ${row.raisedBy.lastName ?? ''}` : '—',
-    },
-    {
-      key: 'assignedTo',
-      header: 'Assigned to',
-      hideOnMobile: true,
-      cell: (row) =>
-        row.assignedTo ? (
-          `${row.assignedTo.firstName} ${row.assignedTo.lastName ?? ''}`
-        ) : (
-          <span className="text-[var(--color-ink-faint)]">Unassigned</span>
-        ),
-    },
-    {
-      key: 'createdAt',
-      header: 'Opened',
-      sortable: true,
-      cell: (row) => (
-        <span title={formatDate(row.createdAt)}>{formatAgo(row.createdAt)}</span>
-      ),
-    },
-    {
-      key: 'priority',
-      header: 'Priority',
-      cell: (row) =>
-        row.priority === 'NORMAL' ? (
-          <span className="text-[var(--color-ink-faint)]">—</span>
-        ) : (
-          <StatusBadge status={row.priority} />
-        ),
-    },
-    { key: 'status', header: 'Status', cell: (row) => <StatusBadge status={row.status} /> },
-  ];
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ['support', 'statistics'],
+    queryFn: () => api.get<TicketStats>('/support/statistics'),
+    staleTime: 30_000,
+  });
 
   return (
     <>
       <PageHeader
         title="Support"
-        description="Tickets raised by parents, teachers and staff."
-      />
-
-      <FilterBar
-        search={list.state.search}
-        onSearchChange={list.setSearch}
-        searchPlaceholder="Search tickets"
-        activeFilterCount={list.activeFilterCount}
-        onReset={list.resetFilters}
-      >
-        <FilterSelect
-          label="Status"
-          value={list.state.filters.status}
-          onChange={(value) => list.setFilter('status', value)}
-          options={STATUSES.map((status) => ({ value: status, label: humanise(status) }))}
-        />
-        <FilterSelect
-          label="Priority"
-          value={list.state.filters.priority}
-          onChange={(value) => list.setFilter('priority', value)}
-          options={PRIORITIES.map((priority) => ({ value: priority, label: humanise(priority) }))}
-        />
-      </FilterBar>
-
-      <DataTable
-        columns={columns}
-        rows={list.items}
-        rowKey={(row) => row.id}
-        isLoading={list.isLoading}
-        error={list.error}
-        onRetry={() => list.refetch()}
-        meta={list.meta}
-        onPageChange={list.setPage}
-        sortBy={list.state.sortBy}
-        sortOrder={list.state.sortOrder}
-        onSortChange={list.setSort}
-        empty={
-          <EmptyState
-            icon={<LifeBuoy />}
-            title="No tickets match these filters"
-            description="Support requests raised from the portal appear here."
-          />
+        description={
+          canManage
+            ? "Tickets raised inside your school, and the ones you've raised with us."
+            : 'Raise a request and follow it through to a fix.'
+        }
+        actions={
+          <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setCreating(true)}>
+            New ticket
+          </Button>
         }
       />
+
+      <StatGrid columns={4} className="mb-4">
+        <StatCard
+          label="Open"
+          value={stats ? formatNumber(stats.open) : '—'}
+          icon={<Inbox />}
+          loading={isLoading}
+        />
+        <StatCard
+          label="In progress"
+          value={stats ? formatNumber(stats.inProgress) : '—'}
+          loading={isLoading}
+        />
+        <StatCard
+          label="Waiting on you"
+          value={stats ? formatNumber(stats.waiting) : '—'}
+          loading={isLoading}
+        />
+        <StatCard
+          label="Resolved"
+          value={stats ? formatNumber(stats.resolved) : '—'}
+          icon={<CheckCircle2 />}
+          loading={isLoading}
+        />
+      </StatGrid>
+
+      <TicketList
+        queryKey="support-tickets"
+        path="/support/tickets"
+        basePath="/support"
+        categories={options?.categories}
+        queueFilter={canManage}
+        emptyAction={
+          <Button size="sm" icon={<Plus />} onClick={() => setCreating(true)}>
+            Raise a ticket
+          </Button>
+        }
+      />
+
+      <Dialog open={creating} onOpenChange={setCreating}>
+        {/* Mounted only while open, so every visit starts from a blank form
+            without an effect reaching back to reset it. */}
+        {creating ? (
+          <NewTicketForm
+            onClose={() => setCreating(false)}
+            options={options}
+            onCreated={(id) => router.push(`/support/${id}`)}
+          />
+        ) : null}
+      </Dialog>
     </>
+  );
+}
+
+function NewTicketForm({
+  onClose,
+  options,
+  onCreated,
+}: {
+  onClose: () => void;
+  options: TicketOptions | undefined;
+  onCreated: (id: string) => void;
+}) {
+  const [subject, setSubject] = React.useState('');
+  const [category, setCategory] = React.useState('GENERAL');
+  const [priority, setPriority] = React.useState('MEDIUM');
+  const [description, setDescription] = React.useState('');
+  const [files, setFiles] = React.useState<TicketAttachment[]>([]);
+  const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
+  const fileInput = React.useRef<HTMLInputElement>(null);
+
+  const upload = useAction({
+    mutationFn: (file: File) => uploadFile<TicketAttachment>('/support/tickets/attachments', file),
+    successMessage: 'File attached',
+    onSuccess: (attachment) => setFiles((current) => [...current, attachment]),
+  });
+
+  const create = useAction({
+    mutationFn: (payload: Record<string, unknown>) =>
+      api.post<{ id: string }>('/support/tickets', payload),
+    successMessage: 'Ticket raised',
+    invalidates: [['support-tickets'], ['support', 'statistics']],
+    onSuccess: (ticket) => {
+      onClose();
+      onCreated(ticket.id);
+    },
+    onError: (error) => setFieldErrors(error.byField),
+  });
+
+  const submit = () => {
+    setFieldErrors({});
+    create.mutate({
+      subject: subject.trim(),
+      category,
+      priority,
+      description: description.trim(),
+      ...(files.length > 0 ? { attachmentIds: files.map((file) => file.id) } : {}),
+    });
+  };
+
+  return (
+    <Modal
+      size="lg"
+      title="Raise a support ticket"
+      description="Tell us what happened and what you expected. Screenshots help."
+      footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            loading={create.isPending}
+            disabled={subject.trim().length < 5 || description.trim().length < 10}
+            onClick={submit}
+          >
+            Raise ticket
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Field label="Subject" required error={fieldErrors.subject}>
+          <Input
+            value={subject}
+            onChange={(event) => setSubject(event.target.value)}
+            placeholder="Cannot download the Class 8 attendance report"
+          />
+        </Field>
+
+        <FieldRow columns={2}>
+          <Field label="Category" required error={fieldErrors.category}>
+            <Select value={category} onChange={(event) => setCategory(event.target.value)}>
+              {(options?.categories ?? [{ value: 'GENERAL', label: 'General enquiry' }]).map(
+                (option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ),
+              )}
+            </Select>
+          </Field>
+
+          <Field
+            label="Priority"
+            help="Urgent is for something blocking the school today."
+            error={fieldErrors.priority}
+          >
+            <Select value={priority} onChange={(event) => setPriority(event.target.value)}>
+              {(options?.priorities ?? [{ value: 'MEDIUM', label: 'Medium' }]).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </FieldRow>
+
+        <Field label="Description" required error={fieldErrors.description}>
+          <Textarea
+            rows={5}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="What you did, what happened, and what you expected instead."
+          />
+        </Field>
+
+        <div>
+          <input
+            ref={fileInput}
+            type="file"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) upload.mutate(file);
+              event.target.value = '';
+            }}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Paperclip />}
+            loading={upload.isPending}
+            onClick={() => fileInput.current?.click()}
+          >
+            Attach a file
+          </Button>
+          <span className="ml-2 text-2xs text-[var(--color-ink-muted)]">
+            Images, PDFs and spreadsheets up to 10 MB.
+          </span>
+
+          {files.length > 0 ? (
+            <ul className="mt-2 flex flex-wrap gap-1.5">
+              {files.map((file) => (
+                <li key={file.id}>
+                  <Badge tone="info">
+                    {file.fileName} · {formatBytes(file.sizeBytes)}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${file.fileName}`}
+                      onClick={() =>
+                        setFiles((current) => current.filter((item) => item.id !== file.id))
+                      }
+                    >
+                      <X className="size-2.5" aria-hidden />
+                    </button>
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      </div>
+    </Modal>
   );
 }

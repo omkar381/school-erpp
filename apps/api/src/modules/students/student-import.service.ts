@@ -9,6 +9,7 @@ import { SequenceService } from '../../common/services/sequence.service';
 import { parseDateOnly } from '../../common/utils/date.util';
 import { UsersService } from '../users/users.service';
 import { AcademicYearService } from '../academics/services/academic-year.service';
+import { UsageService } from '../platform/usage.service';
 import type { BulkImportOptionsDto } from './dto/student.dto';
 
 export interface ImportRowError {
@@ -143,6 +144,7 @@ export class StudentImportService {
     private readonly users: UsersService,
     private readonly academicYears: AcademicYearService,
     private readonly sequences: SequenceService,
+    private readonly usage: UsageService,
     logger: AppLogger,
   ) {
     this.log = logger.child('StudentImportService');
@@ -260,6 +262,10 @@ export class StudentImportService {
         })),
       };
     }
+
+    // Checked for the whole batch before writing anything: importing half a
+    // spreadsheet and then failing on the limit is worse than not starting.
+    await this.usage.assertWithinLimit(schoolId, 'students', importable.length);
 
     for (let index = 0; index < importable.length; index += CHUNK_SIZE) {
       const chunk = importable.slice(index, index + CHUNK_SIZE);

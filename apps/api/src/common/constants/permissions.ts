@@ -409,6 +409,8 @@ const STUDENT_PERMISSIONS: PermissionKey[] = [
   P.MESSAGES_SEND,
   P.LEAVE_APPLY,
   P.LEAVE_VIEW,
+  P.SUPPORT_TICKETS_CREATE,
+  P.SUPPORT_TICKETS_VIEW,
 ];
 
 /** Everything a school-scoped administrator may do (i.e. no platform keys). */

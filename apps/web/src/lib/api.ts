@@ -31,6 +31,48 @@ export const api = new ApiClient({
   },
 });
 
+/**
+ * Uploads a file as multipart/form-data.
+ *
+ * The shared client always sends JSON, so a file upload goes through `fetch`
+ * directly — deliberately without a Content-Type header, so the browser sets
+ * the multipart boundary itself.
+ */
+export async function uploadFile<T>(path: string, file: File, fieldName = 'file'): Promise<T> {
+  const form = new FormData();
+  form.append(fieldName, file);
+
+  const tokens = readTokens();
+  const schoolId = readActiveSchoolId();
+
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      ...(tokens ? { Authorization: `Bearer ${tokens.accessToken}` } : {}),
+      ...(schoolId ? { 'X-School-Id': schoolId } : {}),
+    },
+    body: form,
+  });
+
+  const payload = (await response.json().catch(() => null)) as
+    | { success: true; data: T }
+    | { success: false; message: string; code?: string }
+    | null;
+
+  if (!response.ok || !payload || payload.success === false) {
+    throw new ApiClientError(response.status, {
+      message:
+        payload && payload.success === false
+          ? payload.message
+          : `Upload failed with status ${response.status}`,
+      code: payload && payload.success === false ? payload.code : undefined,
+    });
+  }
+
+  return payload.data;
+}
+
 /** Turns any thrown value into a sentence worth showing a user. */
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiClientError) return error.message;

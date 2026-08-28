@@ -1,0 +1,1 @@
+D:/sms/node_modules/@embedded-postgres/windows-x64/native/bin/postgres.exe "-D" "./.db" "-p" "5433"

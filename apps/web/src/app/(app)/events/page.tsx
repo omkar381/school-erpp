@@ -1,14 +1,23 @@
 'use client';
 
-import { CalendarDays, MapPin, Users } from 'lucide-react';
+import * as React from 'react';
+import { CalendarDays, MapPin, Pencil, Plus, Trash2, Users } from 'lucide-react';
 import { humanise } from '@erp/shared-types';
+import { api } from '@/lib/api';
+import { useAuthStore } from '@/lib/auth-store';
+import { useAction } from '@/hooks/use-action';
 import { useListQuery } from '@/hooks/use-list-query';
 import { formatDateTime } from '@/lib/dates';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardBody } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/dialog';
 import { Pagination } from '@/components/ui/data-table';
+import { Field, FieldRow } from '@/components/ui/field';
 import { FilterBar, FilterSelect } from '@/components/ui/filter-bar';
+import { FormModal } from '@/components/ui/form-modal';
+import { Input, Select, Textarea } from '@/components/ui/input';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/ui/states';
 
 interface EventRow {
@@ -24,6 +33,9 @@ interface EventRow {
   requiresRegistration: boolean;
   registrationCount?: number;
   capacity?: number | null;
+  maxParticipants?: number | null;
+  registrationDeadline?: string | null;
+  isPublic?: boolean;
 }
 
 const EVENT_TYPES = [
@@ -35,18 +47,54 @@ const EVENT_TYPES = [
   'COMPETITION',
   'TRIP',
   'WORKSHOP',
+  'CELEBRATION',
   'OTHER',
 ];
 
+const EVENT_AUDIENCES = ['ALL', 'STUDENTS', 'PARENTS', 'TEACHERS', 'STAFF'];
+
+const EVENT_QUERIES = [['events']];
+
 export default function EventsPage() {
+  const canCreate = useAuthStore(
+    (state) => state.user?.isSuperAdmin || state.user?.permissions.includes('events.create'),
+  );
+  const canManage = useAuthStore(
+    (state) => state.user?.isSuperAdmin || state.user?.permissions.includes('events.update'),
+  );
+  const canDelete = useAuthStore(
+    (state) => state.user?.isSuperAdmin || state.user?.permissions.includes('events.delete'),
+  );
+
+  const [creating, setCreating] = React.useState(false);
+  const [editing, setEditing] = React.useState<EventRow | null>(null);
+  const [deleting, setDeleting] = React.useState<EventRow | null>(null);
+
   const list = useListQuery<EventRow>('events', '/events', {
     initialSortBy: 'startAt',
     initialSortOrder: 'asc',
   });
 
+  const removeEvent = useAction({
+    mutationFn: (row: EventRow) => api.delete(`/events/${row.id}`),
+    successMessage: 'Event deleted',
+    invalidates: EVENT_QUERIES,
+    onSuccess: () => setDeleting(null),
+  });
+
   return (
     <>
-      <PageHeader title="Events" description="What is coming up across the school calendar." />
+      <PageHeader
+        title="Events"
+        description="What is coming up across the school calendar."
+        actions={
+          canCreate ? (
+            <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setCreating(true)}>
+              Add event
+            </Button>
+          ) : null
+        }
+      />
 
       <FilterBar
         search={list.state.search}
@@ -81,6 +129,13 @@ export default function EventsPage() {
           icon={<CalendarDays />}
           title="No events match these filters"
           description="Scheduled events appear here with their dates and venues."
+          action={
+            canCreate && list.activeFilterCount === 0 ? (
+              <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setCreating(true)}>
+                Add event
+              </Button>
+            ) : null
+          }
         />
       ) : (
         <div className="space-y-2.5">
@@ -137,6 +192,29 @@ export default function EventsPage() {
                           {event.capacity ? ` / ${event.capacity}` : ''} registered
                         </span>
                       ) : null}
+
+                      {canManage || canDelete ? (
+                        <span className="ml-auto flex items-center gap-1">
+                          {canManage ? (
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              icon={<Pencil />}
+                              aria-label={`Edit ${event.title}`}
+                              onClick={() => setEditing(event)}
+                            />
+                          ) : null}
+                          {canDelete ? (
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              icon={<Trash2 />}
+                              aria-label={`Delete ${event.title}`}
+                              onClick={() => setDeleting(event)}
+                            />
+                          ) : null}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 </CardBody>
@@ -151,6 +229,248 @@ export default function EventsPage() {
           ) : null}
         </div>
       )}
+
+      {creating ? <EventFormDialog onClose={() => setCreating(false)} /> : null}
+      {editing ? <EventFormDialog event={editing} onClose={() => setEditing(null)} /> : null}
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title="Delete this event?"
+        description={
+          deleting
+            ? `"${deleting.title}" and any registrations against it will be removed.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        destructive
+        loading={removeEvent.isPending}
+        onConfirm={() => deleting && removeEvent.mutate(deleting)}
+      />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Create and edit
+// ---------------------------------------------------------------------------
+
+/** `datetime-local` wants `YYYY-MM-DDTHH:mm` in local time, not a UTC ISO string. */
+function toLocalInput(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function EventFormDialog({ event, onClose }: { event?: EventRow; onClose: () => void }) {
+  const isEdit = Boolean(event);
+
+  const [title, setTitle] = React.useState(event?.title ?? '');
+  const [description, setDescription] = React.useState(event?.description ?? '');
+  const [type, setType] = React.useState(event?.type ?? 'OTHER');
+  const [startAt, setStartAt] = React.useState(toLocalInput(event?.startAt));
+  const [endAt, setEndAt] = React.useState(toLocalInput(event?.endAt));
+  const [isAllDay, setIsAllDay] = React.useState(event?.isAllDay ?? false);
+  const [venue, setVenue] = React.useState(event?.venue ?? '');
+  const [audience, setAudience] = React.useState(event?.audience ?? 'ALL');
+  const [requiresRegistration, setRequiresRegistration] = React.useState(
+    event?.requiresRegistration ?? false,
+  );
+  const [maxParticipants, setMaxParticipants] = React.useState(
+    event?.maxParticipants != null ? String(event.maxParticipants) : '',
+  );
+  const [registrationDeadline, setRegistrationDeadline] = React.useState(
+    event?.registrationDeadline?.slice(0, 10) ?? '',
+  );
+  const [isPublic, setIsPublic] = React.useState(event?.isPublic ?? false);
+  const [publish, setPublish] = React.useState(true);
+
+  // An event that ends before it starts is the mistake this form exists to catch.
+  const datesOk = Boolean(startAt) && Boolean(endAt) && new Date(endAt) >= new Date(startAt);
+
+  return (
+    <FormModal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      size="lg"
+      title={isEdit ? 'Edit event' : 'Add an event'}
+      description="Events show on the school calendar, and on the public website when marked public."
+      submitLabel={isEdit ? 'Save changes' : 'Add event'}
+      values={{
+        title,
+        description,
+        type,
+        startAt,
+        endAt,
+        isAllDay,
+        venue,
+        audience,
+        requiresRegistration,
+        maxParticipants,
+        registrationDeadline,
+        isPublic,
+        publish,
+      }}
+      isValid={title.trim().length > 0 && datesOk}
+      successMessage={isEdit ? 'Event updated' : 'Event added'}
+      invalidates={EVENT_QUERIES}
+      submit={(values) => {
+        const body = {
+          title: values.title.trim(),
+          ...(values.description.trim() ? { description: values.description.trim() } : {}),
+          type: values.type,
+          startAt: new Date(values.startAt).toISOString(),
+          endAt: new Date(values.endAt).toISOString(),
+          isAllDay: values.isAllDay,
+          ...(values.venue.trim() ? { venue: values.venue.trim() } : {}),
+          audience: values.audience,
+          requiresRegistration: values.requiresRegistration,
+          ...(values.requiresRegistration && values.maxParticipants
+            ? { maxParticipants: Number(values.maxParticipants) }
+            : {}),
+          ...(values.requiresRegistration && values.registrationDeadline
+            ? { registrationDeadline: values.registrationDeadline }
+            : {}),
+          isPublic: values.isPublic,
+        };
+
+        return isEdit
+          ? api.patch(`/events/${event!.id}`, body)
+          : api.post('/events', { ...body, publish: values.publish });
+      }}
+    >
+      {(errors) => (
+        <>
+          <Field label="Title" required error={errors.title}>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+          </Field>
+
+          <Field label="Description" error={errors.description}>
+            <Textarea
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </Field>
+
+          <FieldRow columns={3}>
+            <Field label="Type" error={errors.type}>
+              <Select value={type} onChange={(e) => setType(e.target.value)}>
+                {EVENT_TYPES.map((value) => (
+                  <option key={value} value={value}>
+                    {humanise(value)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Audience" error={errors.audience}>
+              <Select value={audience} onChange={(e) => setAudience(e.target.value)}>
+                {EVENT_AUDIENCES.map((value) => (
+                  <option key={value} value={value}>
+                    {humanise(value)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Venue" error={errors.venue}>
+              <Input
+                value={venue}
+                onChange={(e) => setVenue(e.target.value)}
+                placeholder="School grounds"
+              />
+            </Field>
+          </FieldRow>
+
+          <FieldRow>
+            <Field label="Starts" required error={errors.startAt}>
+              <Input
+                type="datetime-local"
+                value={startAt}
+                onChange={(e) => {
+                  setStartAt(e.target.value);
+                  // A same-day default saves the second most common edit.
+                  if (!endAt) setEndAt(e.target.value);
+                }}
+              />
+            </Field>
+            <Field
+              label="Ends"
+              required
+              error={errors.endAt}
+              help={startAt && endAt && !datesOk ? 'Must be on or after the start' : undefined}
+            >
+              <Input
+                type="datetime-local"
+                value={endAt}
+                min={startAt || undefined}
+                onChange={(e) => setEndAt(e.target.value)}
+              />
+            </Field>
+          </FieldRow>
+
+          {requiresRegistration ? (
+            <FieldRow>
+              <Field
+                label="Maximum participants"
+                error={errors.maxParticipants}
+                help="Registrations beyond this are waitlisted"
+              >
+                <Input
+                  type="number"
+                  min={1}
+                  value={maxParticipants}
+                  onChange={(e) => setMaxParticipants(e.target.value)}
+                />
+              </Field>
+              <Field label="Registration closes" error={errors.registrationDeadline}>
+                <Input
+                  type="date"
+                  value={registrationDeadline}
+                  onChange={(e) => setRegistrationDeadline(e.target.value)}
+                />
+              </Field>
+            </FieldRow>
+          ) : null}
+
+          <div className="flex flex-wrap gap-4 pt-1">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isAllDay}
+                onChange={(e) => setIsAllDay(e.target.checked)}
+              />
+              All-day event
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={requiresRegistration}
+                onChange={(e) => setRequiresRegistration(e.target.checked)}
+              />
+              Requires registration
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isPublic}
+                onChange={(e) => setIsPublic(e.target.checked)}
+              />
+              Show on the public website
+            </label>
+            {!isEdit ? (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={publish}
+                  onChange={(e) => setPublish(e.target.checked)}
+                />
+                Publish now
+              </label>
+            ) : null}
+          </div>
+        </>
+      )}
+    </FormModal>
   );
 }

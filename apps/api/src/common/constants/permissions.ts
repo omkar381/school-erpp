@@ -205,6 +205,11 @@ export const PERMISSIONS = {
   WEBSITE_VIEW: 'website.view',
   WEBSITE_MANAGE: 'website.manage',
 
+  // --- Complaints / grievance redressal ---
+  COMPLAINTS_VIEW: 'complaints.view',
+  COMPLAINTS_CREATE: 'complaints.create',
+  COMPLAINTS_MANAGE: 'complaints.manage',
+
   // --- Support ---
   SUPPORT_TICKETS_VIEW: 'support.tickets.view',
   SUPPORT_TICKETS_CREATE: 'support.tickets.create',
@@ -246,6 +251,8 @@ const SELF_SERVICE: PermissionKey[] = [
   P.MESSAGES_SEND,
   P.SUPPORT_TICKETS_CREATE,
   P.SUPPORT_TICKETS_VIEW,
+  P.COMPLAINTS_CREATE,
+  P.COMPLAINTS_VIEW,
 ];
 
 const TEACHER_PERMISSIONS: PermissionKey[] = [
@@ -389,6 +396,8 @@ const PARENT_PERMISSIONS: PermissionKey[] = [
   P.LEAVE_VIEW,
   P.SUPPORT_TICKETS_CREATE,
   P.SUPPORT_TICKETS_VIEW,
+  P.COMPLAINTS_CREATE,
+  P.COMPLAINTS_VIEW,
 ];
 
 const STUDENT_PERMISSIONS: PermissionKey[] = [
@@ -411,6 +420,8 @@ const STUDENT_PERMISSIONS: PermissionKey[] = [
   P.LEAVE_VIEW,
   P.SUPPORT_TICKETS_CREATE,
   P.SUPPORT_TICKETS_VIEW,
+  P.COMPLAINTS_CREATE,
+  P.COMPLAINTS_VIEW,
 ];
 
 /** Everything a school-scoped administrator may do (i.e. no platform keys). */

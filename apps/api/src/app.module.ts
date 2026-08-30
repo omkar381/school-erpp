@@ -33,6 +33,8 @@ import { AcademicsModule } from './modules/academics/academics.module';
 import { StudentsModule } from './modules/students/students.module';
 import { GuardiansModule } from './modules/guardians/guardians.module';
 import { StaffModule } from './modules/staff/staff.module';
+import { PayrollModule } from './modules/payroll/payroll.module';
+import { ComplaintsModule } from './modules/complaints/complaints.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { TimetableModule } from './modules/timetable/timetable.module';
 import { HomeworkModule } from './modules/homework/homework.module';
@@ -120,6 +122,8 @@ import { SettingsModule } from './modules/settings/settings.module';
     StudentsModule,
     GuardiansModule,
     StaffModule,
+    PayrollModule,
+    ComplaintsModule,
     AttendanceModule,
     TimetableModule,
     HomeworkModule,

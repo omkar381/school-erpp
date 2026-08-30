@@ -791,6 +791,7 @@ model User {
   assignedTickets     SupportTicket[] @relation("TicketAssignee")
   ticketMessages      TicketMessage[]
   complaintsFiled     Complaint[]     @relation("ComplaintReporter")
+  complaintsResolved  Complaint[]     @relation("ComplaintResolver")
 
   @@unique([schoolId, email])
   @@unique([schoolId, phone])
@@ -2784,6 +2785,7 @@ model Complaint {
 
   school       School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   reportedBy   User            @relation("ComplaintReporter", fields: [reportedById], references: [id], onDelete: Cascade)
+  resolvedBy   User?           @relation("ComplaintResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
   student      Student?        @relation(fields: [studentId], references: [id], onDelete: SetNull)
   attachments  Attachment[]
 

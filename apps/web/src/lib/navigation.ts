@@ -17,6 +17,7 @@ import {
   LifeBuoy,
   Megaphone,
   MessageSquare,
+  MessageSquareWarning,
   PlaneTakeoff,
   Settings,
   ShieldCheck,
@@ -24,6 +25,7 @@ import {
   UserCog,
   UserPlus,
   Users,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -134,6 +136,13 @@ export const NAVIGATION: NavSection[] = [
         permissions: ['self.fees.pay'],
         module: 'payments',
       },
+      {
+        label: 'Payroll',
+        href: '/payroll',
+        icon: Wallet,
+        permissions: ['payroll.view'],
+        module: 'payroll',
+      },
     ],
   },
   {
@@ -181,6 +190,12 @@ export const NAVIGATION: NavSection[] = [
         badgeKey: 'unreadMessages',
       },
       { label: 'Events', href: '/events', icon: CalendarDays, permissions: ['events.view'] },
+      {
+        label: 'Complaints',
+        href: '/complaints',
+        icon: MessageSquareWarning,
+        permissions: ['complaints.view'],
+      },
     ],
   },
   {

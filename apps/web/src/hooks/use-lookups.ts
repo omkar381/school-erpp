@@ -100,3 +100,42 @@ export function useDepartments() {
     staleTime: LOOKUP_STALE_TIME,
   });
 }
+
+export function useDesignations() {
+  return useQuery({
+    queryKey: ['lookup', 'designations'],
+    queryFn: () => api.get<Array<{ id: string; name: string }>>('/academics/designations'),
+    staleTime: LOOKUP_STALE_TIME,
+  });
+}
+
+/**
+ * Roles a staff login can be given.
+ *
+ * Only fetched when a form actually needs it: ROLES_VIEW is a narrower
+ * permission than the screens that call the other lookups here, so requesting
+ * it eagerly would 403 for people who can otherwise use the page.
+ */
+export function useRoles(enabled = true) {
+  return useQuery({
+    queryKey: ['lookup', 'roles'],
+    queryFn: () =>
+      api.get<Array<{ id: string; name: string; type: string; isSystem: boolean }>>('/roles'),
+    staleTime: LOOKUP_STALE_TIME,
+    enabled,
+  });
+}
+
+export function useStaffOptions(enabled = true) {
+  return useQuery({
+    queryKey: ['lookup', 'staff'],
+    queryFn: () =>
+      api.get<Paginated<TeacherOption & { department: { name: string } | null }>>('/staff', {
+        limit: 200,
+        employmentStatus: 'ACTIVE',
+      }),
+    select: (data) => data.items,
+    staleTime: LOOKUP_STALE_TIME,
+    enabled,
+  });
+}

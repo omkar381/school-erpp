@@ -19,7 +19,10 @@ Thumbs.db
 .turbo/
 uploads/
 tmp/
-storage/local/
+# A pattern with an internal slash is anchored to this file's directory, so
+# "storage/local/" alone never matched apps/api/storage/local — which is where
+# uploaded student documents and generated invoices actually land.
+**/storage/local/
 # Flutter
 .dart_tool/
 .packages

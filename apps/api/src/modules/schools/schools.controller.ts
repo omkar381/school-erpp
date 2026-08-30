@@ -82,6 +82,20 @@ export class SchoolsController {
     return this.schools.findOne(schoolId);
   }
 
+  /**
+   * Readable by anyone signed in, including parents and students.
+   *
+   * The app shell needs the branding, the currency and the enabled modules on
+   * every page; gating that behind `school.view` left every non-staff user
+   * with an empty module map and a sidebar missing most of its links.
+   */
+  @Get('current/context')
+  @ApiOperation({ summary: "Branding, currency and enabled modules for the caller's school" })
+  currentContext(@CurrentSchool() schoolId: string | null) {
+    if (!schoolId) throw new ForbiddenError('This account is not associated with a school');
+    return this.schools.currentContext(schoolId);
+  }
+
   @Get('current/settings')
   @RequirePermissions(PERMISSIONS.SCHOOL_VIEW)
   @ApiOperation({ summary: 'Get school settings, modules and locale configuration' })

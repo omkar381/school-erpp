@@ -100,6 +100,19 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export const GENDERS = ['MALE', 'FEMALE', 'OTHER'] as const;
 export type Gender = (typeof GENDERS)[number];
 
+export const GUARDIAN_RELATIONS = [
+  'FATHER',
+  'MOTHER',
+  'GUARDIAN',
+  'GRANDFATHER',
+  'GRANDMOTHER',
+  'UNCLE',
+  'AUNT',
+  'SIBLING',
+  'OTHER',
+] as const;
+export type GuardianRelation = (typeof GUARDIAN_RELATIONS)[number];
+
 export const BLOOD_GROUPS = [
   'A_POSITIVE',
   'A_NEGATIVE',

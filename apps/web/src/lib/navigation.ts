@@ -1,4 +1,5 @@
 import {
+  Award,
   BadgeIndianRupee,
   Building2,
   BookOpen,
@@ -7,6 +8,7 @@ import {
   CalendarClock,
   CalendarDays,
   ClipboardCheck,
+  ClipboardList,
   CreditCard,
   FileBarChart,
   FileText,
@@ -20,6 +22,7 @@ import {
   ShieldCheck,
   Sparkles,
   UserCog,
+  UserPlus,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -57,6 +60,13 @@ export const NAVIGATION: NavSection[] = [
   {
     label: 'People',
     items: [
+      {
+        label: 'Admissions',
+        href: '/admissions',
+        icon: UserPlus,
+        permissions: ['admissions.view'],
+        module: 'admissions',
+      },
       { label: 'Students', href: '/students', icon: GraduationCap, permissions: ['students.view'] },
       { label: 'Parents', href: '/guardians', icon: Users, permissions: ['guardians.view'] },
       { label: 'Staff', href: '/staff', icon: UserCog, permissions: ['staff.view'] },
@@ -86,6 +96,13 @@ export const NAVIGATION: NavSection[] = [
         module: 'homework',
       },
       {
+        label: 'Assignments',
+        href: '/assignments',
+        icon: ClipboardList,
+        permissions: ['assignments.view'],
+        module: 'assignments',
+      },
+      {
         label: 'Examinations',
         href: '/exams',
         icon: BookOpen,
@@ -109,6 +126,13 @@ export const NAVIGATION: NavSection[] = [
         icon: BadgeIndianRupee,
         permissions: ['fees.view'],
         module: 'fees',
+      },
+      {
+        label: 'Pay fees',
+        href: '/fees/pay',
+        icon: CreditCard,
+        permissions: ['self.fees.pay'],
+        module: 'payments',
       },
     ],
   },
@@ -157,6 +181,25 @@ export const NAVIGATION: NavSection[] = [
         badgeKey: 'unreadMessages',
       },
       { label: 'Events', href: '/events', icon: CalendarDays, permissions: ['events.view'] },
+    ],
+  },
+  {
+    label: 'Records',
+    items: [
+      {
+        label: 'Documents',
+        href: '/documents',
+        icon: FileText,
+        permissions: ['documents.view'],
+        module: 'documents',
+      },
+      {
+        label: 'Certificates',
+        href: '/certificates',
+        icon: Award,
+        permissions: ['certificates.generate', 'id_cards.generate'],
+        module: 'certificates',
+      },
     ],
   },
   {

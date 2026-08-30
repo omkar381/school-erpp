@@ -37,10 +37,22 @@ export const api = new ApiClient({
  * The shared client always sends JSON, so a file upload goes through `fetch`
  * directly — deliberately without a Content-Type header, so the browser sets
  * the multipart boundary itself.
+ *
+ * `fields` carries the metadata that has to travel with the file — which
+ * section to import into, what a document is called. Multipart values are
+ * always strings; the DTOs on the other side coerce them.
  */
-export async function uploadFile<T>(path: string, file: File, fieldName = 'file'): Promise<T> {
+export async function uploadFile<T>(
+  path: string,
+  file: File,
+  fieldName = 'file',
+  fields: Record<string, string | undefined> = {},
+): Promise<T> {
   const form = new FormData();
   form.append(fieldName, file);
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined) form.append(key, value);
+  }
 
   const tokens = readTokens();
   const schoolId = readActiveSchoolId();

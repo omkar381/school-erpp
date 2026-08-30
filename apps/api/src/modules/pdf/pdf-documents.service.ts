@@ -505,12 +505,14 @@ export class PdfDocumentsService {
         staff: {
           select: {
             employeeId: true,
-            designation: true,
+            firstName: true,
+            middleName: true,
+            lastName: true,
             bloodGroup: true,
             photoUrl: true,
             phone: true,
             department: { select: { name: true } },
-            user: { select: { firstName: true, middleName: true, lastName: true } },
+            designation: { select: { name: true } },
           },
         },
       },
@@ -525,11 +527,9 @@ export class PdfDocumentsService {
       cards.map(async (card) => {
         const staff = card.staff!;
         return {
-          name: [staff.user?.firstName, staff.user?.middleName, staff.user?.lastName]
-            .filter(Boolean)
-            .join(' '),
+          name: [staff.firstName, staff.middleName, staff.lastName].filter(Boolean).join(' '),
           identifier: staff.employeeId,
-          subtitle: [staff.designation, staff.department?.name].filter(Boolean).join(' — '),
+          subtitle: [staff.designation?.name, staff.department?.name].filter(Boolean).join(' — '),
           qrPayload: card.qrPayload,
           photoDataUri: await this.pdf.toDataUri(staff.photoUrl),
           validTill: card.validTill ? formatDateIn(card.validTill, brand.timezone) : null,

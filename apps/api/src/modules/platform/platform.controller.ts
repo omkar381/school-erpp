@@ -12,16 +12,22 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RoleType } from '@prisma/client';
 import {
+  CurrentUser,
   RequirePermissions,
   RequireRoles,
   SkipTenantCheck,
 } from '../../common/decorators';
+import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { PERMISSIONS } from '../../common/constants/permissions';
 import { MODULE_LABELS, ALL_MODULES } from '../../common/constants/modules';
 import { ResponseMessage } from '../../common/interceptors/response.interceptor';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { SchoolsService } from '../schools/schools.service';
-import { CreateSchoolDto, UpdateSchoolDto } from '../schools/dto/school.dto';
+import {
+  CreateSchoolDto,
+  SchoolAdminSeedDto,
+  UpdateSchoolDto,
+} from '../schools/dto/school.dto';
 import { PlatformService } from './platform.service';
 import { PlansService } from './plans.service';
 import { SubscriptionsService } from './subscriptions.service';
@@ -129,6 +135,18 @@ export class PlatformController {
   @ApiOperation({ summary: "Update a school's profile" })
   updateSchool(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateSchoolDto) {
     return this.schools.update(id, dto);
+  }
+
+  @Post('schools/:id/administrators')
+  @RequirePermissions(PERMISSIONS.PLATFORM_SCHOOLS_UPDATE)
+  @ResponseMessage('Administrator added')
+  @ApiOperation({ summary: 'Add an administrator to an existing school' })
+  addAdministrator(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SchoolAdminSeedDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.schools.addAdministrator(id, dto, user.id);
   }
 
   @Get('schools/:id/usage')

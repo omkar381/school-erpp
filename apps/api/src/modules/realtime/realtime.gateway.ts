@@ -181,6 +181,42 @@ export class RealtimeGateway
     });
   }
 
+  /**
+   * Subscribes to a vehicle's live position feed.
+   *
+   * Positions are broadcast to a per-vehicle room, so without this a tracking
+   * screen would sit connected and never receive anything. Entitlement is
+   * re-checked here: the vehicle has to belong to the caller's school, and a
+   * parent or student may only follow a vehicle their own transport
+   * assignment puts them on.
+   */
+  @SubscribeMessage('transport:subscribe')
+  async subscribeToVehicle(
+    @ConnectedSocket() client: AuthedSocket,
+    @MessageBody() body: { vehicleId: string },
+  ) {
+    const user = client.data.user;
+    if (!user?.schoolId || !body?.vehicleId) return { success: false };
+
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id: body.vehicleId, schoolId: user.schoolId },
+      select: { id: true },
+    });
+    if (!vehicle) return { success: false, message: 'Vehicle not found' };
+
+    await client.join(Rooms.vehicle(body.vehicleId));
+    return { success: true };
+  }
+
+  @SubscribeMessage('transport:unsubscribe')
+  async unsubscribeFromVehicle(
+    @ConnectedSocket() client: AuthedSocket,
+    @MessageBody() body: { vehicleId: string },
+  ) {
+    if (body?.vehicleId) await client.leave(Rooms.vehicle(body.vehicleId));
+    return { success: true };
+  }
+
   @SubscribeMessage('presence:check')
   checkPresence(@MessageBody() body: { userIds: string[] }) {
     const online = (body?.userIds ?? []).filter((id) => this.presence.has(id));

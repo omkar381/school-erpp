@@ -6,6 +6,7 @@ import { MessageSquare, Send } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { useAction } from '@/hooks/use-action';
+import { useConversationRealtime } from '@/hooks/use-realtime';
 import { cn, initials } from '@/lib/utils';
 import { formatAgo, formatDateTime } from '@/lib/dates';
 import { PageHeader } from '@/components/layout/page-header';
@@ -41,10 +42,15 @@ export default function MessagesPage() {
   const [draft, setDraft] = React.useState('');
   const endRef = React.useRef<HTMLDivElement>(null);
 
+  // Live delivery, typing indicators and the socket's health for this thread.
+  const { typingUserIds, setTyping, connected } = useConversationRealtime(activeId);
+
   const conversations = useQuery({
     queryKey: ['chat', 'conversations'],
     queryFn: () => api.get<{ items: Conversation[] }>('/chat/conversations', { limit: 50 }),
-    refetchInterval: 30_000,
+    // Polling is the fallback for a dropped socket, not the delivery mechanism:
+    // while the gateway is connected it pushes, so this stays idle.
+    refetchInterval: connected ? false : 30_000,
   });
 
   const messages = useQuery({
@@ -52,14 +58,24 @@ export default function MessagesPage() {
     queryFn: () =>
       api.get<{ items: Message[] }>(`/chat/conversations/${activeId}/messages`, { limit: 100 }),
     enabled: Boolean(activeId),
-    refetchInterval: activeId ? 15_000 : false,
+    refetchInterval: activeId && !connected ? 15_000 : false,
   });
+
+  // Stops the indicator on the other side as soon as the draft is sent or the
+  // thread is closed, rather than leaving it stuck until the timeout.
+  React.useEffect(() => {
+    if (!activeId) return;
+    return () => setTyping(false);
+  }, [activeId, setTyping]);
 
   const send = useAction({
     mutationFn: (body: string) =>
       api.post(`/chat/conversations/${activeId}/messages`, { body, type: 'TEXT' }),
     invalidates: [['chat']],
-    onSuccess: () => setDraft(''),
+    onSuccess: () => {
+      setDraft('');
+      setTyping(false);
+    },
   });
 
   // Newest message at the bottom, so jump there whenever the thread changes.
@@ -169,6 +185,24 @@ export default function MessagesPage() {
                     ←
                   </Button>
                   <span className="text-sm font-semibold">{nameOf(active)}</span>
+                  <span className="ml-auto flex items-center gap-1.5 text-2xs text-[var(--color-ink-muted)]">
+                    {typingUserIds.length > 0 ? (
+                      <span aria-live="polite">
+                        {typingUserIds.length === 1 ? 'typing…' : `${typingUserIds.length} typing…`}
+                      </span>
+                    ) : null}
+                    <span
+                      className={cn(
+                        'size-1.5 rounded-full',
+                        connected ? 'bg-[var(--color-success)]' : 'bg-[var(--color-ink-faint)]',
+                      )}
+                      aria-hidden
+                    />
+                    <span className="sr-only">
+                      {connected ? 'Live' : 'Reconnecting'}
+                    </span>
+                    {connected ? null : <span>Reconnecting…</span>}
+                  </span>
                 </div>
 
                 <div className="flex-1 space-y-2 overflow-y-auto p-3">
@@ -228,7 +262,11 @@ export default function MessagesPage() {
                 >
                   <Textarea
                     value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
+                    onChange={(event) => {
+                      setDraft(event.target.value);
+                      setTyping(event.target.value.length > 0);
+                    }}
+                    onBlur={() => setTyping(false)}
                     onKeyDown={(event) => {
                       // Enter sends; Shift-Enter starts a new line, which is what
                       // every chat app has trained people to expect.

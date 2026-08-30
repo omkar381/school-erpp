@@ -33,6 +33,7 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 import { ModuleGuard } from '../../common/guards/module.guard';
 import type {
   CreateSchoolDto,
+  SchoolAdminSeedDto,
   SchoolQueryDto,
   SchoolTimingsDto,
   UpdateBrandingDto,
@@ -252,6 +253,111 @@ export class SchoolsService {
     };
   }
 
+  /**
+   * Adds an administrator to a school that already exists.
+   *
+   * Provisioning seeds the first admin, but there was no way to add another
+   * afterwards — so a school whose only admin left was unreachable without
+   * touching the database. The account is created the same way the first one
+   * is, including the single-use password and the welcome email.
+   */
+  async addAdministrator(schoolId: string, dto: SchoolAdminSeedDto, createdById?: string) {
+    const school = await this.prisma.school.findFirst({
+      where: { id: schoolId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!school) throw new NotFoundError('School');
+
+    const taken = await this.prisma.user.count({
+      where: { email: dto.email, deletedAt: null },
+    });
+    if (taken > 0) {
+      throw new ConflictError(
+        `The email "${dto.email}" is already registered.`,
+        ErrorCode.DUPLICATE_EMAIL,
+      );
+    }
+
+    const temporaryPassword = dto.password ?? this.passwords.generateTemporary();
+    const passwordHash = await this.passwords.hash(temporaryPassword);
+
+    const admin = await this.prisma.transaction(async (tx) => {
+      const adminRole = await tx.role.findFirst({
+        where: { schoolId, type: RoleType.SCHOOL_ADMIN },
+        select: { id: true },
+      });
+      if (!adminRole) {
+        throw new BadRequestError(
+          'This school has no administrator role configured. Re-run role provisioning first.',
+        );
+      }
+
+      return tx.user.create({
+        data: {
+          schoolId,
+          email: dto.email,
+          phone: dto.phone ?? null,
+          passwordHash,
+          firstName: dto.firstName,
+          lastName: dto.lastName ?? null,
+          status: UserStatus.ACTIVE,
+          mustChangePassword: !dto.password,
+          createdById: createdById ?? null,
+          roles: { create: { roleId: adminRole.id } },
+        },
+        select: { id: true, email: true, firstName: true, lastName: true, status: true },
+      });
+    });
+
+    let welcomeEmailSent = false;
+
+    if (!dto.password) {
+      // Best-effort: the account is already usable, and failing the request
+      // because SMTP is down would leave an admin created but unreported.
+      welcomeEmailSent = await this.notifications
+        .sendEmail({
+          to: admin.email!,
+          subject: `Your ${school.name} administrator account`,
+          template: 'welcome',
+          data: {
+            firstName: dto.firstName,
+            schoolName: school.name,
+            roleName: 'School Administrator',
+            username: admin.email,
+            temporaryPassword,
+            loginUrl: `${this.config.get<string>('app.webUrl')}/login`,
+          },
+        })
+        .then(() => true)
+        .catch((error: unknown) => {
+          this.log.error('Welcome email could not be sent to a new administrator', {
+            schoolId,
+            userId: admin.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return false;
+        });
+    }
+
+    this.audit.record({
+      action: AuditAction.CREATE,
+      module: 'schools',
+      entity: 'User',
+      entityId: admin.id,
+      description: `Added administrator "${dto.firstName}" to ${school.name}`,
+      userId: createdById,
+      schoolId,
+    });
+
+    this.log.info('School administrator added', { schoolId, userId: admin.id });
+
+    // A generated password goes out by email and is deliberately never echoed
+    // back in the response, so it cannot end up in a log or a browser cache.
+    // `welcomeEmailSent` therefore matters: when it is false and no password
+    // was supplied, nobody can sign in until an administrator resets it.
+    return { administrator: admin, welcomeEmailSent, passwordWasSupplied: Boolean(dto.password) };
+  }
+
   /** Creates the system roles for a school and grants each its default permissions. */
   private async provisionRoles(tx: TransactionClient, schoolId: string): Promise<void> {
     const permissions = await tx.permission.findMany({ select: { id: true, key: true } });
@@ -402,6 +508,36 @@ export class SchoolsService {
         classes: _count.classes,
       },
     };
+  }
+
+  /**
+   * The school as every signed-in user needs to know it.
+   *
+   * Deliberately a different shape from `findOne`: that one carries
+   * subscriptions, plan pricing and headcounts, which a parent or a student
+   * has no business reading. This is the identity, the branding, the currency
+   * and which modules are switched on — without which the app shell cannot
+   * render a correct sidebar or format a single amount.
+   */
+  async currentContext(id: string) {
+    const school = await this.prisma.school.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        logoUrl: true,
+        primaryColor: true,
+        secondaryColor: true,
+        currency: true,
+        timezone: true,
+        status: true,
+        enabledModules: true,
+      },
+    });
+
+    if (!school) throw new NotFoundError('School');
+    return school;
   }
 
   async findBySlug(slug: string) {

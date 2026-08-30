@@ -7,6 +7,7 @@ import type { CurrentUser, SchoolSummary } from '@erp/shared-types';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { usePersistentState } from '@/hooks/use-persistent-state';
+import { RealtimeProvider } from '@/components/layout/realtime-provider';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
 import { LoadingState } from '@/components/ui/states';
@@ -61,9 +62,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // The school is a separate resource. It carries the branding, the currency
   // and — importantly — which modules are switched on, which the sidebar needs
   // before it can decide what to show.
+  //
+  // This reads the context endpoint rather than the full school record: the
+  // full one is gated behind `school.view`, which parents and students do not
+  // hold, and a 403 here left them with an empty module map and half a sidebar.
   const { data: school } = useQuery({
     queryKey: ['school', 'current'],
-    queryFn: () => api.get<SchoolSummary>('/schools/current'),
+    queryFn: () => api.get<SchoolSummary>('/schools/current/context'),
     enabled: Boolean(tokens) && !profile?.isSuperAdmin,
     staleTime: 10 * 60_000,
   });
@@ -92,35 +97,37 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--color-canvas)]">
-      <div className="hidden lg:block">
-        <Sidebar collapsed={collapsed} onToggle={toggleSidebar} />
-      </div>
-
-      {mobileOpen ? (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <button
-            type="button"
-            aria-label="Close navigation"
-            className="absolute inset-0 bg-[var(--color-overlay)]"
-            onClick={() => setMobileOpen(false)}
-          />
-          <div className="relative h-full w-(--spacing-sidebar) animate-in">
-            <Sidebar
-              collapsed={false}
-              onToggle={() => setMobileOpen(false)}
-              onNavigate={() => setMobileOpen(false)}
-            />
-          </div>
+    <RealtimeProvider>
+      <div className="flex h-screen overflow-hidden bg-[var(--color-canvas)]">
+        <div className="hidden lg:block">
+          <Sidebar collapsed={collapsed} onToggle={toggleSidebar} />
         </div>
-      ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar onOpenSidebar={() => setMobileOpen(true)} />
-        <main className="flex-1 overflow-y-auto p-4 lg:p-5">
-          <div className="mx-auto max-w-[1600px]">{children}</div>
-        </main>
+        {mobileOpen ? (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <button
+              type="button"
+              aria-label="Close navigation"
+              className="absolute inset-0 bg-[var(--color-overlay)]"
+              onClick={() => setMobileOpen(false)}
+            />
+            <div className="relative h-full w-(--spacing-sidebar) animate-in">
+              <Sidebar
+                collapsed={false}
+                onToggle={() => setMobileOpen(false)}
+                onNavigate={() => setMobileOpen(false)}
+              />
+            </div>
+          </div>
+        ) : null}
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Topbar onOpenSidebar={() => setMobileOpen(true)} />
+          <main className="flex-1 overflow-y-auto p-4 lg:p-5">
+            <div className="mx-auto max-w-[1600px]">{children}</div>
+          </main>
+        </div>
       </div>
-    </div>
+    </RealtimeProvider>
   );
 }

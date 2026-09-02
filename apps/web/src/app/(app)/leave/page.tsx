@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { Check, PlaneTakeoff, X } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { CalendarRange, Check, PlaneTakeoff, Plus, X } from 'lucide-react';
 import { LEAVE_STATUSES, humanise } from '@erp/shared-types';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
@@ -11,12 +12,15 @@ import { formatDate } from '@/lib/dates';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge, StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardBody } from '@/components/ui/card';
 import { DataTable, type Column } from '@/components/ui/data-table';
 import { Dialog, Modal } from '@/components/ui/dialog';
-import { Field } from '@/components/ui/field';
+import { Field, FieldRow } from '@/components/ui/field';
 import { FilterBar, FilterSelect } from '@/components/ui/filter-bar';
-import { Textarea } from '@/components/ui/input';
-import { EmptyState } from '@/components/ui/states';
+import { FormModal } from '@/components/ui/form-modal';
+import { Input, Select, Textarea } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 
 interface LeaveRow {
   id: string;
@@ -152,61 +156,78 @@ export default function LeavePage() {
       : []),
   ];
 
+  const canManageTypes = useAuthStore(
+    (state) => state.user?.isSuperAdmin || state.user?.permissions.includes('leave.types.manage'),
+  );
+
   return (
     <>
       <PageHeader
         title="Leave"
-        description="Leave requests from students and staff, and their approval status."
+        description="Leave requests from students and staff, their approval status, and the leave policy."
       />
 
-      <FilterBar
-        search={list.state.search}
-        onSearchChange={list.setSearch}
-        searchPlaceholder="Search by applicant or reason"
-        activeFilterCount={list.activeFilterCount}
-        onReset={list.resetFilters}
-      >
-        <FilterSelect
-          label="Status"
-          value={list.state.filters.status}
-          onChange={(value) => list.setFilter('status', value)}
-          options={LEAVE_STATUSES.map((status) => ({ value: status, label: humanise(status) }))}
-        />
-        <FilterSelect
-          label="Applicant"
-          value={list.state.filters.applicantType}
-          onChange={(value) => list.setFilter('applicantType', value)}
-          options={[
-            { value: 'STUDENT', label: 'Students' },
-            { value: 'STAFF', label: 'Staff' },
-          ]}
-        />
-      </FilterBar>
+      <Tabs defaultValue="requests">
+        <TabsList>
+          <TabsTrigger value="requests">Requests</TabsTrigger>
+          <TabsTrigger value="types">Leave types</TabsTrigger>
+        </TabsList>
 
-      <DataTable
-        columns={columns}
-        rows={list.items}
-        rowKey={(row) => row.id}
-        isLoading={list.isLoading}
-        error={list.error}
-        onRetry={() => list.refetch()}
-        meta={list.meta}
-        onPageChange={list.setPage}
-        sortBy={list.state.sortBy}
-        sortOrder={list.state.sortOrder}
-        onSortChange={list.setSort}
-        empty={
-          <EmptyState
-            icon={<PlaneTakeoff />}
-            title="No leave requests match these filters"
-            description={
-              list.state.filters.status === 'PENDING'
-                ? 'Nothing is waiting on a decision.'
-                : 'Requests appear here as they are submitted.'
+        <TabsContent value="types">
+          <LeaveTypesPanel canManage={Boolean(canManageTypes)} />
+        </TabsContent>
+
+        <TabsContent value="requests">
+          <FilterBar
+            search={list.state.search}
+            onSearchChange={list.setSearch}
+            searchPlaceholder="Search by applicant or reason"
+            activeFilterCount={list.activeFilterCount}
+            onReset={list.resetFilters}
+          >
+            <FilterSelect
+              label="Status"
+              value={list.state.filters.status}
+              onChange={(value) => list.setFilter('status', value)}
+              options={LEAVE_STATUSES.map((status) => ({ value: status, label: humanise(status) }))}
+            />
+            <FilterSelect
+              label="Applicant"
+              value={list.state.filters.applicantType}
+              onChange={(value) => list.setFilter('applicantType', value)}
+              options={[
+                { value: 'STUDENT', label: 'Students' },
+                { value: 'STAFF', label: 'Staff' },
+              ]}
+            />
+          </FilterBar>
+
+          <DataTable
+            columns={columns}
+            rows={list.items}
+            rowKey={(row) => row.id}
+            isLoading={list.isLoading}
+            error={list.error}
+            onRetry={() => list.refetch()}
+            meta={list.meta}
+            onPageChange={list.setPage}
+            sortBy={list.state.sortBy}
+            sortOrder={list.state.sortOrder}
+            onSortChange={list.setSort}
+            empty={
+              <EmptyState
+                icon={<PlaneTakeoff />}
+                title="No leave requests match these filters"
+                description={
+                  list.state.filters.status === 'PENDING'
+                    ? 'Nothing is waiting on a decision.'
+                    : 'Requests appear here as they are submitted.'
+                }
+              />
             }
           />
-        }
-      />
+        </TabsContent>
+      </Tabs>
 
       {pending ? (
         <DecisionDialog
@@ -216,6 +237,261 @@ export default function LeavePage() {
         />
       ) : null}
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Leave types
+// ---------------------------------------------------------------------------
+
+interface LeaveType {
+  id: string;
+  name: string;
+  code: string;
+  applicableTo: 'STUDENT' | 'STAFF';
+  annualQuota: string | null;
+  isPaid: boolean;
+  carryForward: boolean;
+  maxCarryForward: string | null;
+  requiresDocument: boolean;
+  isActive: boolean;
+}
+
+function LeaveTypesPanel({ canManage }: { canManage: boolean }) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['leave-types'],
+    queryFn: () => api.get<LeaveType[]>('/leave/types'),
+  });
+
+  const [creating, setCreating] = React.useState(false);
+
+  const year = new Date().getFullYear();
+  const allocate = useAction({
+    mutationFn: () => api.post<{ created: number }>(`/leave/balances/allocate/${year}`, {}),
+    successMessage: (result) => `Allocated this year's balances (${result.created} created)`,
+    invalidates: [['leave-types'], ['leave']],
+  });
+
+  if (isLoading) return <LoadingState label="Loading leave types" />;
+  if (error) return <ErrorState error={error} onRetry={() => refetch()} />;
+
+  const rows = data ?? [];
+
+  return (
+    <>
+      {canManage ? (
+        <div className="mb-3 flex flex-wrap justify-end gap-2">
+          <Button
+            size="sm"
+            icon={<CalendarRange />}
+            loading={allocate.isPending}
+            onClick={() => allocate.mutate(undefined)}
+          >
+            Allocate {year} balances
+          </Button>
+          <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setCreating(true)}>
+            New leave type
+          </Button>
+        </div>
+      ) : null}
+
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={<CalendarRange />}
+          title="No leave types defined"
+          description="Define the kinds of leave (Casual, Sick, Earned…) and their annual quota."
+          action={
+            canManage ? (
+              <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setCreating(true)}>
+                New leave type
+              </Button>
+            ) : null
+          }
+        />
+      ) : (
+        <Card>
+          <CardBody className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--color-surface-sunken)] text-2xs uppercase tracking-wide text-[var(--color-ink-muted)]">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Name</th>
+                    <th className="px-3 py-2 text-left">Code</th>
+                    <th className="px-3 py-2 text-left">For</th>
+                    <th className="px-3 py-2 text-right">Annual quota</th>
+                    <th className="px-3 py-2 text-left">Flags</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--color-border)]">
+                  {rows.map((type) => (
+                    <tr key={type.id}>
+                      <td className="px-3 py-2 font-medium">{type.name}</td>
+                      <td className="px-3 py-2 font-mono text-2xs">{type.code}</td>
+                      <td className="px-3 py-2">{humanise(type.applicableTo)}</td>
+                      <td className="px-3 py-2 text-right numeric">
+                        {type.annualQuota != null ? Number(type.annualQuota) : '—'}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="flex flex-wrap gap-1">
+                          {type.isPaid ? <Badge tone="success">Paid</Badge> : <Badge>Unpaid</Badge>}
+                          {type.carryForward ? (
+                            <Badge tone="info">
+                              Carry forward
+                              {type.maxCarryForward ? ` ≤ ${Number(type.maxCarryForward)}` : ''}
+                            </Badge>
+                          ) : null}
+                          {type.requiresDocument ? (
+                            <Badge tone="warning">Doc required</Badge>
+                          ) : null}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {creating ? <LeaveTypeDialog onClose={() => setCreating(false)} /> : null}
+    </>
+  );
+}
+
+function LeaveTypeDialog({ onClose }: { onClose: () => void }) {
+  const [name, setName] = React.useState('');
+  const [code, setCode] = React.useState('');
+  const [applicableTo, setApplicableTo] = React.useState<'STAFF' | 'STUDENT'>('STAFF');
+  const [annualQuota, setAnnualQuota] = React.useState('');
+  const [isPaid, setIsPaid] = React.useState(true);
+  const [carryForward, setCarryForward] = React.useState(false);
+  const [maxCarryForward, setMaxCarryForward] = React.useState('');
+  const [requiresDocument, setRequiresDocument] = React.useState(false);
+
+  const codeOk = /^[A-Z0-9_-]{1,20}$/.test(code.trim());
+
+  return (
+    <FormModal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title="New leave type"
+      submitLabel="Create leave type"
+      values={{
+        name,
+        code,
+        applicableTo,
+        annualQuota,
+        isPaid,
+        carryForward,
+        maxCarryForward,
+        requiresDocument,
+      }}
+      isValid={name.trim().length > 0 && codeOk}
+      successMessage="Leave type created"
+      invalidates={[['leave-types']]}
+      submit={(v) =>
+        api.post('/leave/types', {
+          name: v.name.trim(),
+          code: v.code.trim().toUpperCase(),
+          applicableTo: v.applicableTo,
+          ...(v.annualQuota ? { annualQuota: Number(v.annualQuota) } : {}),
+          isPaid: v.isPaid,
+          carryForward: v.carryForward,
+          ...(v.carryForward && v.maxCarryForward
+            ? { maxCarryForward: Number(v.maxCarryForward) }
+            : {}),
+          requiresDocument: v.requiresDocument,
+        })
+      }
+    >
+      {(errors) => (
+        <>
+          <FieldRow columns={2}>
+            <Field label="Name" required error={errors.name}>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Casual Leave"
+                autoFocus
+              />
+            </Field>
+            <Field
+              label="Code"
+              required
+              error={errors.code}
+              help={code && !codeOk ? 'Uppercase letters, digits, dash or underscore' : undefined}
+            >
+              <Input
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                placeholder="CL"
+              />
+            </Field>
+          </FieldRow>
+          <FieldRow columns={2}>
+            <Field label="Applies to" error={errors.applicableTo}>
+              <Select
+                value={applicableTo}
+                onChange={(e) => setApplicableTo(e.target.value as 'STAFF' | 'STUDENT')}
+              >
+                <option value="STAFF">Staff</option>
+                <option value="STUDENT">Students</option>
+              </Select>
+            </Field>
+            <Field label="Annual quota (days)" error={errors.annualQuota}>
+              <Input
+                type="number"
+                min={0}
+                max={365}
+                value={annualQuota}
+                onChange={(e) => setAnnualQuota(e.target.value)}
+              />
+            </Field>
+          </FieldRow>
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isPaid}
+                onChange={(e) => setIsPaid(e.target.checked)}
+                className="size-3.5 accent-[var(--color-accent)]"
+              />
+              Paid leave
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={carryForward}
+                onChange={(e) => setCarryForward(e.target.checked)}
+                className="size-3.5 accent-[var(--color-accent)]"
+              />
+              Carry forward unused days
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={requiresDocument}
+                onChange={(e) => setRequiresDocument(e.target.checked)}
+                className="size-3.5 accent-[var(--color-accent)]"
+              />
+              Requires supporting document
+            </label>
+          </div>
+          {carryForward ? (
+            <Field label="Max days to carry forward" error={errors.maxCarryForward}>
+              <Input
+                type="number"
+                min={0}
+                max={365}
+                value={maxCarryForward}
+                onChange={(e) => setMaxCarryForward(e.target.value)}
+              />
+            </Field>
+          ) : null}
+        </>
+      )}
+    </FormModal>
   );
 }
 

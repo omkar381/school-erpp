@@ -63,7 +63,9 @@ interface StudentDetail {
     section?: { id: string; name: string } | null;
   } | null;
   guardians: Array<{
+    // `id` is the student–guardian link; `guardianId` is the guardian record.
     id: string;
+    guardianId: string;
     firstName: string;
     lastName: string | null;
     relation: string;
@@ -241,7 +243,13 @@ export default function StudentDetailPage() {
                       { label: 'Phone', value: data.phone },
                       {
                         label: 'Address',
-                        value: [data.addressLine1, data.addressLine2, data.city, data.state, data.postalCode]
+                        value: [
+                          data.addressLine1,
+                          data.addressLine2,
+                          data.city,
+                          data.state,
+                          data.postalCode,
+                        ]
                           .filter(Boolean)
                           .join(', '),
                       },
@@ -289,7 +297,7 @@ export default function StudentDetailPage() {
                       </span>
                       <div className="min-w-0">
                         <Link
-                          href={`/guardians/${guardian.id}`}
+                          href={`/guardians/${guardian.guardianId}`}
                           className="block truncate text-sm font-medium hover:text-[var(--color-accent)]"
                         >
                           {guardian.firstName} {guardian.lastName ?? ''}
@@ -409,7 +417,9 @@ export default function StudentDetailPage() {
                           {document.fileName} · {formatDate(document.createdAt)}
                         </p>
                       </div>
-                      {document.isVerified ? <StatusBadge status="ACTIVE" label="Verified" /> : null}
+                      {document.isVerified ? (
+                        <StatusBadge status="ACTIVE" label="Verified" />
+                      ) : null}
                     </li>
                   ))}
                 </ul>

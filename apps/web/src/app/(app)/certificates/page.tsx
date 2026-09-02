@@ -9,6 +9,7 @@ import { humanise } from '@erp/shared-types';
 import { api, errorMessage } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { useListQuery } from '@/hooks/use-list-query';
+import { useClasses, useSections } from '@/hooks/use-lookups';
 import { formatDate } from '@/lib/dates';
 import { saveBlob } from '@/lib/utils';
 import { PageHeader } from '@/components/layout/page-header';
@@ -83,6 +84,7 @@ export default function CertificatesPage() {
   const canIssueCards = permissions.includes('id_cards.generate');
 
   const [issuing, setIssuing] = React.useState(false);
+  const [issuingBulk, setIssuingBulk] = React.useState(false);
   const [creatingTemplate, setCreatingTemplate] = React.useState(false);
   const [issuingCard, setIssuingCard] = React.useState(false);
   const [revoking, setRevoking] = React.useState<CertificateRow | null>(null);
@@ -245,6 +247,9 @@ export default function CertificatesPage() {
             <>
               <Button size="sm" onClick={() => setCreatingTemplate(true)}>
                 New template
+              </Button>
+              <Button size="sm" onClick={() => setIssuingBulk(true)}>
+                Bulk issue
               </Button>
               <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setIssuing(true)}>
                 Issue certificate
@@ -425,13 +430,15 @@ export default function CertificatesPage() {
       {issuing ? (
         <IssueCertificateDialog templates={templates ?? []} onClose={() => setIssuing(false)} />
       ) : null}
-      {creatingTemplate ? (
-        <TemplateDialog onClose={() => setCreatingTemplate(false)} />
+      {issuingBulk ? (
+        <BulkIssueCertificateDialog
+          templates={templates ?? []}
+          onClose={() => setIssuingBulk(false)}
+        />
       ) : null}
+      {creatingTemplate ? <TemplateDialog onClose={() => setCreatingTemplate(false)} /> : null}
       {issuingCard ? <IssueIdCardDialog onClose={() => setIssuingCard(false)} /> : null}
-      {revoking ? (
-        <RevokeDialog certificate={revoking} onClose={() => setRevoking(null)} />
-      ) : null}
+      {revoking ? <RevokeDialog certificate={revoking} onClose={() => setRevoking(null)} /> : null}
     </>
   );
 }
@@ -506,7 +513,11 @@ function IssueCertificateDialog({
             <Field
               label="Template"
               error={errors.templateId}
-              help={forType.length === 0 ? 'No template for this type; default wording is used' : undefined}
+              help={
+                forType.length === 0
+                  ? 'No template for this type; default wording is used'
+                  : undefined
+              }
             >
               <Select
                 value={templateId}
@@ -562,7 +573,9 @@ function TemplateDialog({ onClose }: { onClose: () => void }) {
     'This is to certify that {{studentName}}, admission number {{admissionNumber}}, is a bonafide student of {{className}} {{sectionName}} for the academic year {{academicYear}}.',
   );
 
-  const detected = [...new Set([...bodyTemplate.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].map((m) => m[1]))];
+  const detected = [
+    ...new Set([...bodyTemplate.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].map((m) => m[1])),
+  ];
 
   return (
     <FormModal
@@ -748,6 +761,201 @@ function RevokeDialog({
             autoFocus
           />
         </Field>
+      )}
+    </FormModal>
+  );
+}
+
+function BulkIssueCertificateDialog({
+  templates,
+  onClose,
+}: {
+  templates: Template[];
+  onClose: () => void;
+}) {
+  const classes = useClasses();
+  const [type, setType] = React.useState<string>('BONAFIDE');
+  const [templateId, setTemplateId] = React.useState('');
+  const [classId, setClassId] = React.useState('');
+  const [sectionId, setSectionId] = React.useState('');
+  const [issuedOn, setIssuedOn] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+
+  const { data: sections } = useSections(classId || undefined);
+
+  const studentList = useQuery({
+    queryKey: ['certificate-bulk-students', classId, sectionId],
+    queryFn: () =>
+      api.get<{ items: Array<{ id: string; fullName: string; admissionNumber: string }> }>(
+        '/students',
+        { classId, ...(sectionId ? { sectionId } : {}), limit: 200 },
+      ),
+    enabled: Boolean(classId),
+  });
+
+  const students = studentList.data?.items ?? [];
+
+  // Default every loaded student to selected.
+  const [seededFor, setSeededFor] = React.useState<string | null>(null);
+  const key = `${classId}:${sectionId}`;
+  if (studentList.data && seededFor !== key) {
+    setSeededFor(key);
+    setSelectedIds(new Set(students.map((s) => s.id)));
+  }
+
+  function toggle(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const forType = templates.filter((template) => template.type === type && template.isActive);
+  const ids = students.filter((s) => selectedIds.has(s.id)).map((s) => s.id);
+
+  return (
+    <FormModal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      size="lg"
+      title="Bulk issue certificates"
+      description="Issue the same certificate to a whole class at once — the values are auto-filled per student."
+      submitLabel={`Issue ${ids.length || ''} certificate${ids.length === 1 ? '' : 's'}`}
+      values={{ type, templateId, ids, issuedOn }}
+      isValid={ids.length > 0}
+      successMessage={(result: { issued?: number } | unknown) =>
+        `Issued ${(result as { issued?: number })?.issued ?? ids.length} certificate(s)`
+      }
+      invalidates={[['certificates']]}
+      submit={(v) =>
+        api.post('/certificates/bulk', {
+          type: v.type,
+          ...(v.templateId ? { templateId: v.templateId } : {}),
+          studentIds: v.ids,
+          ...(v.issuedOn ? { issuedOn: v.issuedOn } : {}),
+        })
+      }
+    >
+      {(errors) => (
+        <>
+          <FieldRow columns={2}>
+            <Field label="Type" required error={errors.type}>
+              <Select
+                value={type}
+                onChange={(e) => {
+                  setType(e.target.value);
+                  setTemplateId('');
+                }}
+              >
+                {CERTIFICATE_TYPES.map((value) => (
+                  <option key={value} value={value}>
+                    {humanise(value)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              label="Template"
+              error={errors.templateId}
+              help={
+                forType.length === 0
+                  ? 'No template for this type; default wording is used'
+                  : undefined
+              }
+            >
+              <Select
+                value={templateId}
+                onChange={(e) => setTemplateId(e.target.value)}
+                disabled={forType.length === 0}
+              >
+                <option value="">Best available</option>
+                {forType.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </FieldRow>
+
+          <FieldRow columns={3}>
+            <Field label="Class" required>
+              <Select
+                value={classId}
+                onChange={(e) => {
+                  setClassId(e.target.value);
+                  setSectionId('');
+                }}
+              >
+                <option value="">Select a class</option>
+                {(classes.data ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Section">
+              <Select
+                value={sectionId}
+                onChange={(e) => setSectionId(e.target.value)}
+                disabled={!classId}
+              >
+                <option value="">All sections</option>
+                {(sections ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    Section {s.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Issued on">
+              <Input type="date" value={issuedOn} onChange={(e) => setIssuedOn(e.target.value)} />
+            </Field>
+          </FieldRow>
+
+          {!classId ? (
+            <p className="text-2xs text-[var(--color-ink-muted)]">
+              Pick a class to load its students.
+            </p>
+          ) : studentList.isLoading ? (
+            <p className="text-2xs text-[var(--color-ink-muted)]">Loading students…</p>
+          ) : students.length === 0 ? (
+            <p className="text-2xs text-[var(--color-ink-muted)]">No students in this selection.</p>
+          ) : (
+            <Field label={`Students (${ids.length}/${students.length} selected)`}>
+              <div className="max-h-52 space-y-0.5 overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--color-border)] p-2">
+                <label className="flex items-center gap-2 border-b border-[var(--color-border)] pb-1 text-2xs font-medium">
+                  <input
+                    type="checkbox"
+                    checked={ids.length === students.length}
+                    onChange={(e) =>
+                      setSelectedIds(
+                        e.target.checked ? new Set(students.map((s) => s.id)) : new Set(),
+                      )
+                    }
+                    className="size-3.5 accent-[var(--color-accent)]"
+                  />
+                  Select all
+                </label>
+                {students.map((student) => (
+                  <label key={student.id} className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(student.id)}
+                      onChange={() => toggle(student.id)}
+                      className="size-3.5 accent-[var(--color-accent)]"
+                    />
+                    {student.fullName}
+                    <span className="text-[var(--color-ink-faint)]">{student.admissionNumber}</span>
+                  </label>
+                ))}
+              </div>
+            </Field>
+          )}
+        </>
       )}
     </FormModal>
   );

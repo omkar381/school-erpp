@@ -2,7 +2,16 @@
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BookMarked, CalendarDays, DoorOpen, Layers, Plus } from 'lucide-react';
+import {
+  BookMarked,
+  CalendarDays,
+  CalendarOff,
+  DoorOpen,
+  Layers,
+  Pencil,
+  Plus,
+  Trash2,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { useAction } from '@/hooks/use-action';
@@ -17,7 +26,7 @@ import { Field, FieldRow } from '@/components/ui/field';
 import { FormModal } from '@/components/ui/form-modal';
 import { Input, Select, Textarea } from '@/components/ui/input';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
-import { EmptyState, LoadingState } from '@/components/ui/states';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface AcademicYear {
@@ -36,12 +45,14 @@ const ACADEMIC_KEYS = [['lookup'], ['academics']];
 
 export default function AcademicsPage() {
   const canManage = useAuthStore(
-    (state) =>
-      state.user?.isSuperAdmin || state.user?.permissions.includes('classes.manage'),
+    (state) => state.user?.isSuperAdmin || state.user?.permissions.includes('classes.manage'),
   );
   const canManageYears = useAuthStore(
     (state) =>
       state.user?.isSuperAdmin || state.user?.permissions.includes('academic_years.manage'),
+  );
+  const canManageCalendar = useAuthStore(
+    (state) => state.user?.isSuperAdmin || state.user?.permissions.includes('calendar.manage'),
   );
 
   const [dialog, setDialog] = React.useState<
@@ -50,6 +61,7 @@ export default function AcademicsPage() {
     | { kind: 'subject' }
     | { kind: 'department' }
     | { kind: 'year' }
+    | { kind: 'holiday'; holiday?: Holiday }
     | null
   >(null);
 
@@ -89,12 +101,18 @@ export default function AcademicsPage() {
           <TabsTrigger value="subjects">Subjects</TabsTrigger>
           <TabsTrigger value="departments">Departments</TabsTrigger>
           <TabsTrigger value="years">Academic years</TabsTrigger>
+          <TabsTrigger value="holidays">Holidays</TabsTrigger>
         </TabsList>
 
         <TabsContent value="classes">
           {canManage ? (
             <div className="mb-3 flex justify-end">
-              <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setDialog({ kind: 'class' })}>
+              <Button
+                size="sm"
+                variant="primary"
+                icon={<Plus />}
+                onClick={() => setDialog({ kind: 'class' })}
+              >
                 Add class
               </Button>
             </div>
@@ -109,7 +127,12 @@ export default function AcademicsPage() {
               description="Add the first class to start building the academic structure."
               action={
                 canManage ? (
-                  <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setDialog({ kind: 'class' })}>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    icon={<Plus />}
+                    onClick={() => setDialog({ kind: 'class' })}
+                  >
                     Add class
                   </Button>
                 ) : null
@@ -167,7 +190,12 @@ export default function AcademicsPage() {
         <TabsContent value="subjects">
           {canManage ? (
             <div className="mb-3 flex justify-end">
-              <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setDialog({ kind: 'subject' })}>
+              <Button
+                size="sm"
+                variant="primary"
+                icon={<Plus />}
+                onClick={() => setDialog({ kind: 'subject' })}
+              >
                 Add subject
               </Button>
             </div>
@@ -180,7 +208,12 @@ export default function AcademicsPage() {
               description="Subjects drive the timetable, marks entry and report cards."
               action={
                 canManage ? (
-                  <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setDialog({ kind: 'subject' })}>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    icon={<Plus />}
+                    onClick={() => setDialog({ kind: 'subject' })}
+                  >
                     Add subject
                   </Button>
                 ) : null
@@ -213,7 +246,12 @@ export default function AcademicsPage() {
         <TabsContent value="departments">
           {canManage ? (
             <div className="mb-3 flex justify-end">
-              <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setDialog({ kind: 'department' })}>
+              <Button
+                size="sm"
+                variant="primary"
+                icon={<Plus />}
+                onClick={() => setDialog({ kind: 'department' })}
+              >
                 Add department
               </Button>
             </div>
@@ -225,7 +263,12 @@ export default function AcademicsPage() {
               description="Departments group staff and subjects for reporting."
               action={
                 canManage ? (
-                  <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setDialog({ kind: 'department' })}>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    icon={<Plus />}
+                    onClick={() => setDialog({ kind: 'department' })}
+                  >
                     Add department
                   </Button>
                 ) : null
@@ -253,7 +296,12 @@ export default function AcademicsPage() {
         <TabsContent value="years">
           {canManageYears ? (
             <div className="mb-3 flex justify-end">
-              <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setDialog({ kind: 'year' })}>
+              <Button
+                size="sm"
+                variant="primary"
+                icon={<Plus />}
+                onClick={() => setDialog({ kind: 'year' })}
+              >
                 Create academic year
               </Button>
             </div>
@@ -266,7 +314,12 @@ export default function AcademicsPage() {
               description="Every enrolment, exam and invoice is scoped to an academic year."
               action={
                 canManageYears ? (
-                  <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setDialog({ kind: 'year' })}>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    icon={<Plus />}
+                    onClick={() => setDialog({ kind: 'year' })}
+                  >
                     Create academic year
                   </Button>
                 ) : null
@@ -284,8 +337,19 @@ export default function AcademicsPage() {
             </Card>
           )}
         </TabsContent>
+
+        <TabsContent value="holidays">
+          <HolidaysTab
+            canManage={Boolean(canManageCalendar)}
+            onAdd={() => setDialog({ kind: 'holiday' })}
+            onEdit={(holiday) => setDialog({ kind: 'holiday', holiday })}
+          />
+        </TabsContent>
       </Tabs>
 
+      {dialog?.kind === 'holiday' ? (
+        <HolidayDialog holiday={dialog.holiday} onClose={() => setDialog(null)} />
+      ) : null}
       {dialog?.kind === 'class' ? <ClassDialog onClose={() => setDialog(null)} /> : null}
       {dialog?.kind === 'section' ? (
         <SectionDialog
@@ -415,7 +479,11 @@ function ClassDialog({ onClose }: { onClose: () => void }) {
           </FieldRow>
 
           <FieldRow>
-            <Field label="Stream" error={errors.stream} help="Science, Commerce — senior years only">
+            <Field
+              label="Stream"
+              error={errors.stream}
+              help="Science, Commerce — senior years only"
+            >
               <Input
                 value={stream}
                 onChange={(event) => setStream(event.target.value)}
@@ -495,7 +563,11 @@ function SectionDialog({
             />
           </Field>
 
-          <Field label="Capacity" error={errors.capacity} help="Admissions are blocked once this is reached">
+          <Field
+            label="Capacity"
+            error={errors.capacity}
+            help="Admissions are blocked once this is reached"
+          >
             <Input
               type="number"
               min="1"
@@ -823,6 +895,250 @@ function YearDialog({ years, onClose }: { years: AcademicYear[]; onClose: () => 
             />
             Make this the current academic year
           </label>
+        </>
+      )}
+    </FormModal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Holidays & vacations
+// ---------------------------------------------------------------------------
+
+interface Holiday {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  description: string | null;
+  type: string;
+}
+
+const HOLIDAY_TYPES = ['PUBLIC', 'SCHOOL', 'EXAM', 'VACATION'] as const;
+
+function holidayTypeLabel(type: string): string {
+  return type.charAt(0) + type.slice(1).toLowerCase();
+}
+
+function HolidaysTab({
+  canManage,
+  onAdd,
+  onEdit,
+}: {
+  canManage: boolean;
+  onAdd: () => void;
+  onEdit: (holiday: Holiday) => void;
+}) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['academics', 'holidays'],
+    queryFn: () => api.get<Holiday[]>('/academics/holidays'),
+  });
+
+  const [deleting, setDeleting] = React.useState<Holiday | null>(null);
+
+  const remove = useAction({
+    mutationFn: (id: string) => api.delete(`/academics/holidays/${id}`),
+    successMessage: 'Holiday removed',
+    invalidates: [['academics', 'holidays']],
+    onSuccess: () => setDeleting(null),
+  });
+
+  if (isLoading) return <LoadingState label="Loading holidays" />;
+  if (error) return <ErrorState error={error} onRetry={() => refetch()} />;
+
+  const rows = data ?? [];
+  const today = new Date();
+  const upcoming = rows.filter((holiday) => new Date(holiday.endDate) >= today).length;
+
+  return (
+    <>
+      {canManage && rows.length > 0 ? (
+        <div className="mb-3 flex justify-end">
+          <Button size="sm" variant="primary" icon={<Plus />} onClick={onAdd}>
+            Add holiday
+          </Button>
+        </div>
+      ) : null}
+
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={<CalendarOff />}
+          title="No holidays for this year"
+          description="Days added here are marked non-working, and excluded from attendance and exam scheduling."
+          action={
+            canManage ? (
+              <Button size="sm" variant="primary" icon={<Plus />} onClick={onAdd}>
+                Add holiday
+              </Button>
+            ) : null
+          }
+        />
+      ) : (
+        <Card>
+          <CardHeader
+            title="School calendar"
+            description={`${rows.length} ${rows.length === 1 ? 'entry' : 'entries'} · ${upcoming} still to come`}
+          />
+          <CardBody className="p-0">
+            <ul className="divide-y divide-[var(--color-border)]">
+              {rows.map((holiday) => {
+                const single = holiday.startDate.slice(0, 10) === holiday.endDate.slice(0, 10);
+                const past = new Date(holiday.endDate) < today;
+                return (
+                  <li
+                    key={holiday.id}
+                    className={`flex items-center gap-3 px-4 py-2.5 ${past ? 'opacity-55' : ''}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-2 text-sm font-medium">
+                        <span className="truncate">{holiday.name}</span>
+                        <Badge tone={holiday.type === 'VACATION' ? 'info' : 'neutral'}>
+                          {holidayTypeLabel(holiday.type)}
+                        </Badge>
+                      </p>
+                      <p className="text-2xs text-[var(--color-ink-muted)]">
+                        {single
+                          ? formatDate(holiday.startDate)
+                          : `${formatDate(holiday.startDate)} – ${formatDate(holiday.endDate)}`}
+                        {holiday.description ? ` · ${holiday.description}` : ''}
+                      </p>
+                    </div>
+                    {canManage ? (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Edit ${holiday.name}`}
+                          onClick={() => onEdit(holiday)}
+                        >
+                          <Pencil />
+                        </Button>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Remove ${holiday.name}`}
+                          onClick={() => setDeleting(holiday)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title="Remove this holiday?"
+        description={
+          deleting ? `"${deleting.name}" will be treated as a normal working day again.` : undefined
+        }
+        confirmLabel="Remove"
+        destructive
+        loading={remove.isPending}
+        onConfirm={() => deleting && remove.mutate(deleting.id)}
+      />
+    </>
+  );
+}
+
+function HolidayDialog({ holiday, onClose }: { holiday?: Holiday; onClose: () => void }) {
+  const isEdit = Boolean(holiday);
+  const [name, setName] = React.useState(holiday?.name ?? '');
+  const [startDate, setStartDate] = React.useState(holiday?.startDate.slice(0, 10) ?? '');
+  const [endDate, setEndDate] = React.useState(holiday?.endDate.slice(0, 10) ?? '');
+  const [type, setType] = React.useState(holiday?.type ?? 'SCHOOL');
+  const [description, setDescription] = React.useState(holiday?.description ?? '');
+
+  const datesOk = Boolean(startDate) && Boolean(endDate) && endDate >= startDate;
+
+  return (
+    <FormModal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      size="sm"
+      title={isEdit ? 'Edit holiday' : 'Add a holiday'}
+      submitLabel={isEdit ? 'Save changes' : 'Add holiday'}
+      values={{ name, startDate, endDate, type, description }}
+      isValid={name.trim().length > 0 && datesOk}
+      successMessage={isEdit ? 'Holiday updated' : 'Holiday added'}
+      invalidates={[['academics', 'holidays']]}
+      submit={(values) => {
+        const body = {
+          name: values.name.trim(),
+          startDate: values.startDate,
+          endDate: values.endDate,
+          type: values.type,
+          // Sent even when blank on edit, so a cleared note actually clears.
+          description: values.description.trim(),
+        };
+        return isEdit
+          ? api.patch(`/academics/holidays/${holiday!.id}`, body)
+          : api.post('/academics/holidays', body);
+      }}
+    >
+      {(errors) => (
+        <>
+          <Field label="Name" required error={errors.name}>
+            <Input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Diwali break"
+              autoFocus
+            />
+          </Field>
+
+          <FieldRow>
+            <Field label="Starts" required error={errors.startDate}>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(event) => {
+                  setStartDate(event.target.value);
+                  if (!endDate) setEndDate(event.target.value);
+                }}
+              />
+            </Field>
+            <Field
+              label="Ends"
+              required
+              error={
+                errors.endDate ??
+                (startDate && endDate && !datesOk ? 'Must be on or after the start' : undefined)
+              }
+            >
+              <Input
+                type="date"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={(event) => setEndDate(event.target.value)}
+              />
+            </Field>
+          </FieldRow>
+
+          <Field label="Type" error={errors.type}>
+            <Select value={type} onChange={(event) => setType(event.target.value)}>
+              {HOLIDAY_TYPES.map((value) => (
+                <option key={value} value={value}>
+                  {holidayTypeLabel(value)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Description" error={errors.description}>
+            <Textarea
+              rows={2}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Optional"
+            />
+          </Field>
         </>
       )}
     </FormModal>

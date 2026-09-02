@@ -2,24 +2,26 @@
 
 import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
-import { CalendarDays, MapPin, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { CalendarDays, Check, MapPin, Pencil, Plus, Trash2, UserPlus, Users } from 'lucide-react';
 import { humanise } from '@erp/shared-types';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { useAction } from '@/hooks/use-action';
 import { useListQuery } from '@/hooks/use-list-query';
 import { formatDateTime } from '@/lib/dates';
+import { initials } from '@/lib/utils';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardBody } from '@/components/ui/card';
-import { ConfirmDialog } from '@/components/ui/dialog';
+import { ConfirmDialog, Dialog, Drawer } from '@/components/ui/dialog';
 import { Pagination } from '@/components/ui/data-table';
 import { Field, FieldRow } from '@/components/ui/field';
 import { FilterBar, FilterSelect } from '@/components/ui/filter-bar';
 import { FormModal } from '@/components/ui/form-modal';
 import { Input, Select, Textarea } from '@/components/ui/input';
-import { EmptyState, ErrorState, TableSkeleton } from '@/components/ui/states';
+import { EmptyState, ErrorState, LoadingState, TableSkeleton } from '@/components/ui/states';
 
 interface EventRow {
   id: string;
@@ -70,6 +72,11 @@ export default function EventsPage() {
   const [creating, setCreating] = React.useState(false);
   const [editing, setEditing] = React.useState<EventRow | null>(null);
   const [deleting, setDeleting] = React.useState<EventRow | null>(null);
+  const [managing, setManaging] = React.useState<EventRow | null>(null);
+
+  const canRegister = useAuthStore(
+    (state) => state.user?.isSuperAdmin || state.user?.permissions.includes('events.update'),
+  );
 
   const initialSearch = useSearchParams().get('q') ?? undefined;
   const list = useListQuery<EventRow>('events', '/events', {
@@ -189,15 +196,32 @@ export default function EventsPage() {
                       ) : null}
                       <Badge>{humanise(event.audience)}</Badge>
                       {event.requiresRegistration ? (
-                        <span className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setManaging(event)}
+                          className="inline-flex items-center gap-1 hover:text-[var(--color-accent)]"
+                        >
                           <Users className="size-3" aria-hidden />
                           {event.registrationCount ?? 0}
-                          {event.capacity ? ` / ${event.capacity}` : ''} registered
-                        </span>
+                          {(event.capacity ?? event.maxParticipants)
+                            ? ` / ${event.capacity ?? event.maxParticipants}`
+                            : ''}{' '}
+                          registered
+                        </button>
                       ) : null}
 
-                      {canManage || canDelete ? (
+                      {canManage || canDelete || (canRegister && event.requiresRegistration) ? (
                         <span className="ml-auto flex items-center gap-1">
+                          {canRegister && event.requiresRegistration ? (
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              icon={<Users />}
+                              onClick={() => setManaging(event)}
+                            >
+                              Registrations
+                            </Button>
+                          ) : null}
                           {canManage ? (
                             <Button
                               size="icon-sm"
@@ -235,6 +259,13 @@ export default function EventsPage() {
 
       {creating ? <EventFormDialog onClose={() => setCreating(false)} /> : null}
       {editing ? <EventFormDialog event={editing} onClose={() => setEditing(null)} /> : null}
+      {managing ? (
+        <RegistrationsDrawer
+          event={managing}
+          canManage={Boolean(canRegister)}
+          onClose={() => setManaging(null)}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={deleting !== null}
@@ -472,6 +503,261 @@ function EventFormDialog({ event, onClose }: { event?: EventRow; onClose: () => 
               </label>
             ) : null}
           </div>
+        </>
+      )}
+    </FormModal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Registrations
+// ---------------------------------------------------------------------------
+
+interface Registration {
+  id: string;
+  status: string;
+  notes: string | null;
+  student: {
+    id: string;
+    admissionNumber: string;
+    firstName: string;
+    lastName: string | null;
+    photoUrl: string | null;
+    enrollments: Array<{ class: { name: string } | null; section: { name: string } | null }>;
+  };
+}
+
+interface EventDetail extends EventRow {
+  seatsRemaining: number | null;
+  registrations: Registration[];
+}
+
+function RegistrationsDrawer({
+  event,
+  canManage,
+  onClose,
+}: {
+  event: EventRow;
+  canManage: boolean;
+  onClose: () => void;
+}) {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['event', event.id],
+    queryFn: () => api.get<EventDetail>(`/events/${event.id}`),
+  });
+
+  const [adding, setAdding] = React.useState(false);
+  const [removing, setRemoving] = React.useState<Registration | null>(null);
+
+  const eventQueries = [['event', event.id], ['events']];
+
+  const remove = useAction({
+    mutationFn: (studentId: string) => api.delete(`/events/${event.id}/register/${studentId}`),
+    successMessage: 'Registration cancelled',
+    invalidates: eventQueries,
+    onSuccess: () => setRemoving(null),
+  });
+
+  const markAttended = useAction({
+    mutationFn: (studentIds: string[]) =>
+      api.post(`/events/${event.id}/attendance`, { studentIds }),
+    successMessage: 'Attendance recorded',
+    invalidates: eventQueries,
+  });
+
+  const registrations = data?.registrations ?? [];
+  const notAttended = registrations
+    .filter((r) => r.status !== 'ATTENDED' && r.status !== 'CANCELLED')
+    .map((r) => r.student.id);
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <Drawer
+        width="md"
+        title={event.title}
+        description={
+          data
+            ? `${registrations.length} registered${
+                data.seatsRemaining !== null ? ` · ${data.seatsRemaining} seats left` : ''
+              }`
+            : 'Registrations'
+        }
+        footer={
+          canManage ? (
+            <>
+              {notAttended.length > 0 ? (
+                <Button
+                  size="sm"
+                  icon={<Check />}
+                  loading={markAttended.isPending}
+                  onClick={() => markAttended.mutate(notAttended)}
+                >
+                  Mark all attended
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="primary"
+                icon={<UserPlus />}
+                onClick={() => setAdding(true)}
+              >
+                Register a student
+              </Button>
+            </>
+          ) : null
+        }
+      >
+        {isLoading ? (
+          <LoadingState label="Loading registrations" />
+        ) : error ? (
+          <ErrorState error={error} onRetry={() => refetch()} />
+        ) : registrations.length === 0 ? (
+          <EmptyState
+            icon={<Users />}
+            title="Nobody registered yet"
+            description="Register students individually, or let them sign up from the portal."
+            action={
+              canManage ? (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={<UserPlus />}
+                  onClick={() => setAdding(true)}
+                >
+                  Register a student
+                </Button>
+              ) : null
+            }
+          />
+        ) : (
+          <ul className="divide-y divide-[var(--color-border)] rounded-[var(--radius-sm)] border border-[var(--color-border)]">
+            {registrations.map((registration) => {
+              const enrollment = registration.student.enrollments[0];
+              const name = [registration.student.firstName, registration.student.lastName]
+                .filter(Boolean)
+                .join(' ');
+              return (
+                <li key={registration.id} className="flex items-center gap-2.5 px-3 py-2">
+                  <span
+                    className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--color-surface-sunken)] text-2xs font-semibold"
+                    aria-hidden
+                  >
+                    {registration.student.photoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={registration.student.photoUrl}
+                        alt=""
+                        className="size-7 object-cover"
+                      />
+                    ) : (
+                      initials(name)
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{name}</p>
+                    <p className="truncate text-2xs text-[var(--color-ink-muted)]">
+                      {registration.student.admissionNumber}
+                      {enrollment?.class
+                        ? ` · ${enrollment.class.name} ${enrollment.section?.name ?? ''}`
+                        : ''}
+                    </p>
+                  </div>
+                  <Badge
+                    tone={
+                      registration.status === 'ATTENDED'
+                        ? 'success'
+                        : registration.status === 'WAITLISTED'
+                          ? 'warning'
+                          : registration.status === 'CANCELLED'
+                            ? 'danger'
+                            : 'neutral'
+                    }
+                  >
+                    {humanise(registration.status)}
+                  </Badge>
+                  {canManage && registration.status !== 'CANCELLED' ? (
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      icon={<Trash2 />}
+                      aria-label={`Cancel ${name} registration`}
+                      onClick={() => setRemoving(registration)}
+                    />
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Drawer>
+
+      {adding ? (
+        <RegisterStudentDialog eventId={event.id} onClose={() => setAdding(false)} />
+      ) : null}
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        title="Cancel this registration?"
+        description="If there is a waitlist, the next student is promoted automatically."
+        confirmLabel="Cancel registration"
+        destructive
+        loading={remove.isPending}
+        onConfirm={() => removing && remove.mutate(removing.student.id)}
+      />
+    </Dialog>
+  );
+}
+
+function RegisterStudentDialog({ eventId, onClose }: { eventId: string; onClose: () => void }) {
+  const students = useListQuery<{ id: string; fullName: string; admissionNumber: string }>(
+    'event-student-search',
+    '/students',
+    { initialLimit: 10 },
+  );
+
+  const [studentId, setStudentId] = React.useState('');
+  const [notes, setNotes] = React.useState('');
+
+  return (
+    <FormModal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title="Register a student"
+      description="Past capacity, the student is added to the waitlist."
+      submitLabel="Register"
+      values={{ studentId, notes }}
+      isValid={studentId !== ''}
+      successMessage="Student registered"
+      invalidates={[['event', eventId], ['events']]}
+      submit={(v) =>
+        api.post(`/events/${eventId}/register`, {
+          studentId: v.studentId,
+          ...(v.notes.trim() ? { notes: v.notes.trim() } : {}),
+        })
+      }
+    >
+      {(errors) => (
+        <>
+          <Field label="Student" required error={errors.studentId}>
+            <div className="space-y-1.5">
+              <Input
+                placeholder="Search by name or admission number"
+                value={students.state.search}
+                onChange={(e) => students.setSearch(e.target.value)}
+              />
+              <Select value={studentId} onChange={(e) => setStudentId(e.target.value)}>
+                <option value="">Select a student</option>
+                {students.items.map((student) => (
+                  <option key={student.id} value={student.id}>
+                    {student.fullName} — {student.admissionNumber}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </Field>
+          <Field label="Notes" error={errors.notes}>
+            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </Field>
         </>
       )}
     </FormModal>

@@ -77,6 +77,7 @@ export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
 export const PAYMENT_STATUSES = [
   'PENDING',
+  'PROCESSING',
   'SUCCESS',
   'FAILED',
   'REFUNDED',
@@ -91,11 +92,23 @@ export const PAYMENT_METHODS = [
   'CARD',
   'NET_BANKING',
   'CHEQUE',
+  'DEMAND_DRAFT',
   'BANK_TRANSFER',
   'ONLINE_GATEWAY',
+  'WALLET',
   'ADJUSTMENT',
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export const REFUND_STATUSES = [
+  'REQUESTED',
+  'APPROVED',
+  'PROCESSING',
+  'COMPLETED',
+  'REJECTED',
+  'FAILED',
+] as const;
+export type RefundStatus = (typeof REFUND_STATUSES)[number];
 
 export const GENDERS = ['MALE', 'FEMALE', 'OTHER'] as const;
 export type Gender = (typeof GENDERS)[number];
@@ -228,6 +241,9 @@ export const STATUS_TONES: Record<string, ToneName> = {
   IN_PROGRESS: 'warning',
   RESOLVED: 'success',
   CLOSED: 'neutral',
+  REQUESTED: 'warning',
+  PROCESSING: 'info',
+  COMPLETED: 'success',
 
   // Library and stock
   RETURNED: 'success',

@@ -728,18 +728,19 @@ export class ExamsService {
       instructions: dto.instructions ?? null,
     };
 
-    const schedule = dto.scheduleId
-      ? await this.prisma.examSchedule.update({ where: { id: dto.scheduleId }, data })
-      : await this.prisma.examSchedule.upsert({
-          where: {
-            examSubjectId_sectionId: {
-              examSubjectId: examSubject.id,
-              sectionId: dto.sectionId ?? null,
-            } as never,
-          },
-          create: data,
-          update: data,
+    // Prisma cannot target a compound unique that contains a NULL (the
+    // all-sections row has `sectionId: null`), so the upsert is done by hand:
+    // find the existing slot for this subject+section, then update or create.
+    const existing = dto.scheduleId
+      ? { id: dto.scheduleId }
+      : await this.prisma.examSchedule.findFirst({
+          where: { examSubjectId: examSubject.id, sectionId: dto.sectionId ?? null },
+          select: { id: true },
         });
+
+    const schedule = existing
+      ? await this.prisma.examSchedule.update({ where: { id: existing.id }, data })
+      : await this.prisma.examSchedule.create({ data });
 
     this.audit.record({
       action: AuditAction.UPDATE,

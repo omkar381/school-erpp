@@ -31,6 +31,7 @@ import {
   CreateDriverDto,
   CreateRouteDto,
   CreateVehicleDto,
+  UpdateRouteDto,
   UpdateRouteStopsDto,
   VehicleQueryDto,
   VehiclePositionDto,
@@ -122,6 +123,18 @@ export class TransportController {
   @ApiOperation({ summary: 'Create a route with its stops' })
   createRoute(@CurrentSchool() schoolId: string | null, @Body() dto: CreateRouteDto) {
     return this.transport.createRoute(this.school(schoolId), dto);
+  }
+
+  @Patch('routes/:id')
+  @RequirePermissions(PERMISSIONS.TRANSPORT_MANAGE)
+  @ResponseMessage('Route updated')
+  @ApiOperation({ summary: 'Edit a route: name, timings, fare, vehicle and driver' })
+  updateRoute(
+    @CurrentSchool() schoolId: string | null,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateRouteDto,
+  ) {
+    return this.transport.updateRoute(this.school(schoolId), id, dto);
   }
 
   @Patch('routes/:id/stops')

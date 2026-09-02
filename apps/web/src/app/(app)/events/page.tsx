@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useSearchParams } from 'next/navigation';
 import { CalendarDays, MapPin, Pencil, Plus, Trash2, Users } from 'lucide-react';
 import { humanise } from '@erp/shared-types';
 import { api } from '@/lib/api';
@@ -70,9 +71,11 @@ export default function EventsPage() {
   const [editing, setEditing] = React.useState<EventRow | null>(null);
   const [deleting, setDeleting] = React.useState<EventRow | null>(null);
 
+  const initialSearch = useSearchParams().get('q') ?? undefined;
   const list = useListQuery<EventRow>('events', '/events', {
     initialSortBy: 'startAt',
     initialSortOrder: 'asc',
+    initialSearch,
   });
 
   const removeEvent = useAction({

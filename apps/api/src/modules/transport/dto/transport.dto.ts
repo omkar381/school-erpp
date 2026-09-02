@@ -20,6 +20,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination.dto';
@@ -283,6 +284,68 @@ export class UpdateRouteStopsDto {
   @ValidateNested({ each: true })
   @Type(() => RouteStopDto)
   stops!: RouteStopDto[];
+}
+
+export class UpdateRouteDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  description?: string;
+
+  @ApiPropertyOptional({ format: 'uuid', description: 'null to clear the assignment' })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID('4')
+  vehicleId?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID('4')
+  driverId?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID('4')
+  attendantId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  distanceKm?: number;
+
+  @ApiPropertyOptional({ example: '07:00' })
+  @IsOptional()
+  @Matches(TIME)
+  startTime?: string;
+
+  @ApiPropertyOptional({ example: '08:15' })
+  @IsOptional()
+  @Matches(TIME)
+  endTime?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  baseFare?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class AssignTransportDto {

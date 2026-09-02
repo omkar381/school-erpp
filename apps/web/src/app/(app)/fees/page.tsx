@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, BadgeIndianRupee, Download, Plus, TriangleAlert } from 'lucide-react';
+import { ArrowRight, BadgeIndianRupee, Download, Plus, Settings2, TriangleAlert } from 'lucide-react';
 import { humanise } from '@erp/shared-types';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
@@ -49,6 +49,12 @@ export default function FeesPage() {
   const canCollect = useAuthStore(
     (state) => state.user?.isSuperAdmin || state.user?.permissions.includes('fees.collect'),
   );
+  const canSetup = useAuthStore(
+    (state) =>
+      state.user?.isSuperAdmin ||
+      state.user?.permissions.includes('fees.structure.manage') ||
+      state.user?.permissions.includes('fees.invoice.create'),
+  );
   const [exporting, setExporting] = React.useState(false);
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -88,6 +94,11 @@ export default function FeesPage() {
             <Button size="sm" onClick={exportOutstanding} loading={exporting} icon={<Download />}>
               Export outstanding
             </Button>
+            {canSetup ? (
+              <Button size="sm" asChild icon={<Settings2 />}>
+                <Link href="/fees/setup">Fee setup</Link>
+              </Button>
+            ) : null}
             <Button size="sm" asChild>
               <Link href="/fees/invoices">Invoices</Link>
             </Button>

@@ -20,7 +20,7 @@ export function CardHeader({
   description,
   actions,
   ...props
-}: React.HTMLAttributes<HTMLDivElement> & {
+}: Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> & {
   title?: React.ReactNode;
   description?: React.ReactNode;
   actions?: React.ReactNode;

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarClock, Plus, TrendingUp, UserPlus, Users } from 'lucide-react';
 import { GENDERS, GUARDIAN_RELATIONS, humanise } from '@erp/shared-types';
@@ -100,9 +101,11 @@ export default function AdmissionsPage() {
     staleTime: 60_000,
   });
 
+  const initialSearch = useSearchParams().get('q') ?? undefined;
   const list = useListQuery<EnquiryRow>('admissions-enquiries', '/admissions/enquiries', {
     initialSortBy: 'createdAt',
     initialSortOrder: 'desc',
+    initialSearch,
   });
 
   const columns: Column<EnquiryRow>[] = [

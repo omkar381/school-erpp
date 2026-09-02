@@ -227,6 +227,7 @@ export const NAVIGATION: NavSection[] = [
   {
     label: 'Administration',
     items: [
+      { label: 'Users & access', href: '/users', icon: UserCog, permissions: ['users.view'] },
       { label: 'Settings', href: '/settings', icon: Settings, permissions: ['school.view', 'school.settings.update', 'roles.view'] },
       {
         label: 'Subscription',

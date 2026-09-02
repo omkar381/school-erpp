@@ -19,6 +19,7 @@ import type {
   CreateDriverDto,
   CreateRouteDto,
   CreateVehicleDto,
+  UpdateRouteDto,
   UpdateRouteStopsDto,
   VehiclePositionDto,
 } from './dto/transport.dto';
@@ -373,6 +374,79 @@ export class TransportService {
     });
 
     return route;
+  }
+
+  /** Edits a route's identity, timings, fare and vehicle/driver assignment. */
+  async updateRoute(schoolId: string, routeId: string, dto: UpdateRouteDto) {
+    const route = await this.prisma.transportRoute.findFirst({
+      where: { id: routeId, schoolId },
+      select: {
+        id: true,
+        name: true,
+        _count: { select: { assignments: { where: { isActive: true } } } },
+      },
+    });
+    if (!route) throw new NotFoundError('Route');
+
+    if (dto.vehicleId) {
+      const vehicle = await this.prisma.vehicle.findFirst({
+        where: { id: dto.vehicleId, schoolId },
+        select: { capacity: true, registrationNumber: true },
+      });
+      if (!vehicle) throw new NotFoundError('Vehicle');
+      // A smaller bus must still seat everyone already riding this route.
+      if (vehicle.capacity < route._count.assignments) {
+        throw new ConflictError(
+          `${vehicle.registrationNumber} seats ${vehicle.capacity}, but ${route._count.assignments} students already ride this route.`,
+          ErrorCode.VEHICLE_CAPACITY_EXCEEDED,
+        );
+      }
+    }
+
+    if (dto.driverId) {
+      const driver = await this.prisma.driver.count({ where: { id: dto.driverId, schoolId } });
+      if (driver === 0) throw new NotFoundError('Driver');
+    }
+    if (dto.attendantId) {
+      const attendant = await this.prisma.driver.count({
+        where: { id: dto.attendantId, schoolId },
+      });
+      if (attendant === 0) throw new NotFoundError('Attendant');
+    }
+
+    if (dto.isActive === false && route._count.assignments > 0) {
+      throw new ConflictError(
+        `${route._count.assignments} student(s) still use this route. Reassign them before deactivating it.`,
+      );
+    }
+
+    const updated = await this.prisma.transportRoute.update({
+      where: { id: routeId },
+      data: {
+        name: dto.name ?? undefined,
+        description: dto.description ?? undefined,
+        vehicleId: dto.vehicleId === undefined ? undefined : dto.vehicleId,
+        driverId: dto.driverId === undefined ? undefined : dto.driverId,
+        attendantId: dto.attendantId === undefined ? undefined : dto.attendantId,
+        distanceKm: dto.distanceKm ?? undefined,
+        startTime: dto.startTime ?? undefined,
+        endTime: dto.endTime ?? undefined,
+        baseFare: dto.baseFare ?? undefined,
+        isActive: dto.isActive ?? undefined,
+      },
+      include: { stops: { orderBy: { sequence: 'asc' } } },
+    });
+
+    this.audit.record({
+      action: AuditAction.UPDATE,
+      module: 'transport',
+      entity: 'TransportRoute',
+      entityId: routeId,
+      description: `Updated route "${updated.name}"`,
+      schoolId,
+    });
+
+    return updated;
   }
 
   async updateStops(schoolId: string, routeId: string, dto: UpdateRouteStopsDto) {

@@ -2,7 +2,18 @@
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, BookX, Copy, Library, Plus, RotateCcw, Undo2 } from 'lucide-react';
+import {
+  BadgeIndianRupee,
+  BookOpen,
+  BookX,
+  Copy,
+  HandCoins,
+  Library,
+  Plus,
+  RotateCcw,
+  ScanSearch,
+  Undo2,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { useAction } from '@/hooks/use-action';
@@ -19,7 +30,7 @@ import { FilterBar, FilterSelect } from '@/components/ui/filter-bar';
 import { FormModal } from '@/components/ui/form-modal';
 import { Input, Select, Textarea } from '@/components/ui/input';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
-import { EmptyState } from '@/components/ui/states';
+import { EmptyState, LoadingState, ErrorState } from '@/components/ui/states';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface BookRow {
@@ -77,6 +88,9 @@ export default function LibraryPage() {
   const canReturn = useAuthStore(
     (state) => state.user?.isSuperAdmin || state.user?.permissions.includes('library.return'),
   );
+  const canFine = useAuthStore(
+    (state) => state.user?.isSuperAdmin || state.user?.permissions.includes('library.fine.manage'),
+  );
 
   const [cataloguing, setCataloguing] = React.useState(false);
   const [addingCopies, setAddingCopies] = React.useState<BookRow | null>(null);
@@ -86,6 +100,15 @@ export default function LibraryPage() {
   const renew = useAction({
     mutationFn: (row: IssueRow) => api.post(`/library/issues/${row.id}/renew`, {}),
     successMessage: 'Loan renewed',
+    invalidates: LIBRARY_QUERIES,
+  });
+
+  const overdueScan = useAction({
+    mutationFn: () => api.post<{ flagged: number; notified: number }>('/library/overdue-scan', {}),
+    successMessage: (result) =>
+      result.flagged === 0
+        ? 'No new overdue loans found'
+        : `${result.flagged} loan(s) flagged overdue, ${result.notified} borrower(s) notified`,
     invalidates: LIBRARY_QUERIES,
   });
 
@@ -213,7 +236,12 @@ export default function LibraryPage() {
           'Staff'
         ),
     },
-    { key: 'issueDate', header: 'Issued', hideOnMobile: true, cell: (row) => formatDate(row.issueDate) },
+    {
+      key: 'issueDate',
+      header: 'Issued',
+      hideOnMobile: true,
+      cell: (row) => formatDate(row.issueDate),
+    },
     {
       key: 'dueDate',
       header: 'Due',
@@ -279,11 +307,28 @@ export default function LibraryPage() {
         title="Library"
         description="Catalogue, circulation and outstanding fines."
         actions={
-          canManage ? (
-            <Button size="sm" variant="primary" icon={<Plus />} onClick={() => setCataloguing(true)}>
-              Catalogue a book
-            </Button>
-          ) : null
+          <>
+            {canFine ? (
+              <Button
+                size="sm"
+                icon={<ScanSearch />}
+                loading={overdueScan.isPending}
+                onClick={() => overdueScan.mutate()}
+              >
+                Run overdue scan
+              </Button>
+            ) : null}
+            {canManage ? (
+              <Button
+                size="sm"
+                variant="primary"
+                icon={<Plus />}
+                onClick={() => setCataloguing(true)}
+              >
+                Catalogue a book
+              </Button>
+            ) : null}
+          </>
         }
       />
 
@@ -304,6 +349,7 @@ export default function LibraryPage() {
         <TabsList>
           <TabsTrigger value="catalogue">Catalogue</TabsTrigger>
           <TabsTrigger value="circulation">Circulation</TabsTrigger>
+          <TabsTrigger value="fines">Fines</TabsTrigger>
         </TabsList>
 
         <TabsContent value="catalogue">
@@ -403,6 +449,10 @@ export default function LibraryPage() {
             }
           />
         </TabsContent>
+
+        <TabsContent value="fines">
+          <FinesTab canFine={Boolean(canFine)} currency={currency} />
+        </TabsContent>
       </Tabs>
 
       {cataloguing ? <CatalogueBookDialog onClose={() => setCataloguing(false)} /> : null}
@@ -410,9 +460,7 @@ export default function LibraryPage() {
         <AddCopiesDialog book={addingCopies} onClose={() => setAddingCopies(null)} />
       ) : null}
       {issuing ? <IssueBookDialog book={issuing} onClose={() => setIssuing(null)} /> : null}
-      {returning ? (
-        <ReturnBookDialog issue={returning} onClose={() => setReturning(null)} />
-      ) : null}
+      {returning ? <ReturnBookDialog issue={returning} onClose={() => setReturning(null)} /> : null}
     </>
   );
 }
@@ -558,7 +606,12 @@ function CatalogueBookDialog({ onClose }: { onClose: () => void }) {
                 placeholder="R3-S2"
               />
             </Field>
-            <Field label="Copies" required error={errors.copies} help="Physical copies to accession">
+            <Field
+              label="Copies"
+              required
+              error={errors.copies}
+              help="Physical copies to accession"
+            >
               <Input
                 type="number"
                 min={1}
@@ -637,10 +690,14 @@ function IssueBookDialog({ book, onClose }: { book: BookRow; onClose: () => void
   const students = useQuery({
     queryKey: ['library', 'student-search', studentQuery],
     queryFn: () =>
-      api.get<{ items: Array<{ id: string; firstName: string; lastName: string | null; admissionNumber: string }> }>(
-        '/students',
-        { search: studentQuery, limit: 10 },
-      ),
+      api.get<{
+        items: Array<{
+          id: string;
+          firstName: string;
+          lastName: string | null;
+          admissionNumber: string;
+        }>;
+      }>('/students', { search: studentQuery, limit: 10 }),
     enabled: borrowerType === 'STUDENT' && studentQuery.trim().length >= 2,
   });
 
@@ -792,11 +849,7 @@ function ReturnBookDialog({ issue, onClose }: { issue: IssueRow; onClose: () => 
       {(errors) => (
         <>
           <Field label="Condition" error={errors.condition}>
-            <Select
-              value={condition}
-              onChange={(e) => setCondition(e.target.value)}
-              autoFocus
-            >
+            <Select value={condition} onChange={(e) => setCondition(e.target.value)} autoFocus>
               {BOOK_CONDITIONS.map((value) => (
                 <option key={value} value={value}>
                   {value.charAt(0) + value.slice(1).toLowerCase()}
@@ -822,6 +875,331 @@ function ReturnBookDialog({ issue, onClose }: { issue: IssueRow; onClose: () => 
 
           <Field label="Remarks" error={errors.remarks}>
             <Textarea rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+          </Field>
+        </>
+      )}
+    </FormModal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Fines
+// ---------------------------------------------------------------------------
+
+interface FineRow {
+  id: string;
+  reason: string;
+  amount: string;
+  paidAmount: string;
+  waivedAmount: string;
+  isSettled: boolean;
+  settledAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  issue: {
+    id: string;
+    dueDate: string;
+    returnDate: string | null;
+    bookCopy: { accessionNumber: string; book: { title: string } };
+    student: { id: string; admissionNumber: string; firstName: string; lastName: string | null };
+  };
+}
+
+const FINE_QUERIES = [['library'], ['library-fines'], ['library-statistics']];
+
+function fineBalance(fine: FineRow): number {
+  return Number(fine.amount) - Number(fine.paidAmount) - Number(fine.waivedAmount);
+}
+
+function FinesTab({ canFine, currency }: { canFine: boolean; currency: string }) {
+  const [filter, setFilter] = React.useState<'outstanding' | 'settled' | 'all'>('outstanding');
+  const [settling, setSettling] = React.useState<FineRow | null>(null);
+  const [waiving, setWaiving] = React.useState<FineRow | null>(null);
+
+  const settledParam =
+    filter === 'outstanding' ? 'false' : filter === 'settled' ? 'true' : undefined;
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['library-fines', filter],
+    queryFn: () =>
+      api.get<FineRow[]>('/library/fines', settledParam ? { settled: settledParam } : undefined),
+  });
+
+  const rows = data ?? [];
+
+  return (
+    <>
+      <FilterBar
+        search=""
+        onSearchChange={() => undefined}
+        searchPlaceholder=""
+        activeFilterCount={0}
+      >
+        <FilterSelect
+          label="Show"
+          value={filter}
+          onChange={(value) => setFilter((value as typeof filter) ?? 'outstanding')}
+          allLabel="Outstanding"
+          options={[
+            { value: 'outstanding', label: 'Outstanding' },
+            { value: 'settled', label: 'Settled' },
+            { value: 'all', label: 'All fines' },
+          ]}
+        />
+      </FilterBar>
+
+      {isLoading ? (
+        <LoadingState label="Loading fines" />
+      ) : error ? (
+        <ErrorState error={error} onRetry={() => refetch()} />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          icon={<BadgeIndianRupee />}
+          title={filter === 'outstanding' ? 'No outstanding fines' : 'No fines to show'}
+          description={
+            filter === 'outstanding'
+              ? 'Overdue, lost and damage fines appear here until they are settled or waived.'
+              : undefined
+          }
+        />
+      ) : (
+        <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-[var(--color-surface-sunken)] text-2xs uppercase tracking-wide text-[var(--color-ink-muted)]">
+                <tr>
+                  <th className="px-3 py-2 text-left">Student</th>
+                  <th className="px-3 py-2 text-left">Book</th>
+                  <th className="px-3 py-2 text-left">Reason</th>
+                  <th className="px-3 py-2 text-right">Fine</th>
+                  <th className="px-3 py-2 text-right">Paid</th>
+                  <th className="px-3 py-2 text-right">Waived</th>
+                  <th className="px-3 py-2 text-right">Balance</th>
+                  <th className="px-3 py-2 text-left">Status</th>
+                  {canFine ? <th className="px-3 py-2" /> : null}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--color-border)]">
+                {rows.map((fine) => {
+                  const balance = fineBalance(fine);
+                  const studentName = [fine.issue.student.firstName, fine.issue.student.lastName]
+                    .filter(Boolean)
+                    .join(' ');
+                  return (
+                    <tr key={fine.id} className="hover:bg-[var(--color-surface-sunken)]">
+                      <td className="px-3 py-2">
+                        <span className="block font-medium">{studentName}</span>
+                        <span className="block text-2xs text-[var(--color-ink-muted)]">
+                          {fine.issue.student.admissionNumber}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="block truncate">{fine.issue.bookCopy.book.title}</span>
+                        <span className="block text-2xs text-[var(--color-ink-muted)]">
+                          {fine.issue.bookCopy.accessionNumber} · due{' '}
+                          {formatDate(fine.issue.dueDate)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Badge
+                          tone={
+                            fine.reason === 'LOST'
+                              ? 'danger'
+                              : fine.reason === 'DAMAGE'
+                                ? 'warning'
+                                : 'neutral'
+                          }
+                        >
+                          {fine.reason}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 text-right numeric">
+                        {formatMoney(fine.amount, currency)}
+                      </td>
+                      <td className="px-3 py-2 text-right numeric">
+                        {formatMoney(fine.paidAmount, currency)}
+                      </td>
+                      <td className="px-3 py-2 text-right numeric">
+                        {formatMoney(fine.waivedAmount, currency)}
+                      </td>
+                      <td className="px-3 py-2 text-right numeric font-medium">
+                        {formatMoney(balance, currency)}
+                      </td>
+                      <td className="px-3 py-2">
+                        {fine.isSettled ? (
+                          <Badge tone="success">Settled</Badge>
+                        ) : Number(fine.paidAmount) > 0 || Number(fine.waivedAmount) > 0 ? (
+                          <Badge tone="info">Part paid</Badge>
+                        ) : (
+                          <Badge tone="warning">Unpaid</Badge>
+                        )}
+                      </td>
+                      {canFine ? (
+                        <td className="px-3 py-2">
+                          <div className="flex items-center justify-end gap-1">
+                            {!fine.isSettled ? (
+                              <>
+                                <Button
+                                  size="xs"
+                                  variant="ghost"
+                                  icon={<HandCoins />}
+                                  onClick={() => setSettling(fine)}
+                                >
+                                  Collect
+                                </Button>
+                                <Button size="xs" variant="ghost" onClick={() => setWaiving(fine)}>
+                                  Waive
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="text-2xs text-[var(--color-ink-faint)]">
+                                {fine.settledAt ? formatDate(fine.settledAt) : ''}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {settling ? (
+        <SettleFineDialog fine={settling} currency={currency} onClose={() => setSettling(null)} />
+      ) : null}
+      {waiving ? (
+        <WaiveFineDialog fine={waiving} currency={currency} onClose={() => setWaiving(null)} />
+      ) : null}
+    </>
+  );
+}
+
+function SettleFineDialog({
+  fine,
+  currency,
+  onClose,
+}: {
+  fine: FineRow;
+  currency: string;
+  onClose: () => void;
+}) {
+  const balance = fineBalance(fine);
+  const [amount, setAmount] = React.useState(String(balance));
+  const value = Number(amount);
+  const valid = Number.isFinite(value) && value > 0 && value <= balance + 1e-9;
+
+  return (
+    <FormModal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title="Collect a fine payment"
+      description={`Balance due: ${formatMoney(balance, currency)}`}
+      submitLabel="Record payment"
+      values={{ amount }}
+      isValid={valid}
+      successMessage="Fine payment recorded"
+      invalidates={FINE_QUERIES}
+      submit={(values) =>
+        api.post(`/library/fines/${fine.id}/settle`, { amount: Number(values.amount) })
+      }
+    >
+      {(errors) => (
+        <Field
+          label="Amount collected"
+          required
+          error={errors.amount}
+          help={
+            value > balance
+              ? `Cannot exceed the ${formatMoney(balance, currency)} balance`
+              : undefined
+          }
+        >
+          <Input
+            type="number"
+            min={0.01}
+            step="0.01"
+            max={balance}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            autoFocus
+          />
+        </Field>
+      )}
+    </FormModal>
+  );
+}
+
+function WaiveFineDialog({
+  fine,
+  currency,
+  onClose,
+}: {
+  fine: FineRow;
+  currency: string;
+  onClose: () => void;
+}) {
+  const balance = fineBalance(fine);
+  const [whole, setWhole] = React.useState(true);
+  const [amount, setAmount] = React.useState(String(balance));
+  const [reason, setReason] = React.useState('');
+
+  const value = whole ? balance : Number(amount);
+  const valid =
+    reason.trim().length > 0 &&
+    (whole || (Number.isFinite(value) && value > 0 && value <= balance + 1e-9));
+
+  return (
+    <FormModal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title="Waive a fine"
+      description={`Balance: ${formatMoney(balance, currency)}. A waiver is recorded against your account with the reason.`}
+      submitLabel="Waive fine"
+      values={{ whole, amount, reason }}
+      isValid={valid}
+      successMessage="Fine waived"
+      invalidates={FINE_QUERIES}
+      submit={(values) =>
+        api.post(`/library/fines/${fine.id}/waive`, {
+          reason: values.reason.trim(),
+          ...(values.whole ? {} : { amount: Number(values.amount) }),
+        })
+      }
+    >
+      {(errors) => (
+        <>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={whole}
+              onChange={(e) => setWhole(e.target.checked)}
+              className="size-3.5 accent-[var(--color-accent)]"
+            />
+            Waive the whole balance ({formatMoney(balance, currency)})
+          </label>
+          {!whole ? (
+            <Field label="Amount to waive" required error={errors.amount}>
+              <Input
+                type="number"
+                min={0.01}
+                step="0.01"
+                max={balance}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            </Field>
+          ) : null}
+          <Field label="Reason" required error={errors.reason}>
+            <Textarea
+              rows={2}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. Book returned late due to a medical absence"
+            />
           </Field>
         </>
       )}

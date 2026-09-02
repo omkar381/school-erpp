@@ -431,7 +431,7 @@ const SOURCES: Source[] = [
     module: MODULES.EXAMS,
     async search(prisma, schoolId, term, take) {
       const exams = await prisma.exam.findMany({
-        where: { schoolId, name: { contains: term, mode: 'insensitive' } },
+        where: { schoolId, deletedAt: null, name: { contains: term, mode: 'insensitive' } },
         take,
         orderBy: { startDate: 'desc' },
         select: { id: true, name: true, type: true, status: true, startDate: true },
@@ -444,6 +444,166 @@ const SOURCES: Source[] = [
         subtitle: [exam.type, exam.startDate.toISOString().slice(0, 10)].join(' • '),
         url: `/exams/${exam.id}`,
         badge: exam.status,
+      }));
+    },
+  },
+
+  {
+    type: 'event',
+    label: 'Events',
+    permission: PERMISSIONS.EVENTS_VIEW,
+    module: MODULES.EVENTS,
+    async search(prisma, schoolId, term, take) {
+      const events = await prisma.event.findMany({
+        where: {
+          schoolId,
+          deletedAt: null,
+          OR: [
+            { title: { contains: term, mode: 'insensitive' } },
+            { venue: { contains: term, mode: 'insensitive' } },
+          ],
+        },
+        take,
+        orderBy: { startAt: 'desc' },
+        select: { id: true, title: true, type: true, venue: true, startAt: true, isPublished: true },
+      });
+
+      return events.map((event) => ({
+        type: 'event',
+        id: event.id,
+        title: event.title,
+        subtitle: [event.venue, event.startAt.toISOString().slice(0, 10)].filter(Boolean).join(' • '),
+        url: `/events?q=${encodeURIComponent(event.title)}`,
+        badge: event.isPublished ? undefined : 'Draft',
+      }));
+    },
+  },
+
+  {
+    type: 'admission',
+    label: 'Admissions',
+    permission: PERMISSIONS.ADMISSIONS_VIEW,
+    module: MODULES.ADMISSIONS,
+    async search(prisma, schoolId, term, take) {
+      const enquiries = await prisma.admissionEnquiry.findMany({
+        where: {
+          schoolId,
+          OR: [
+            { enquiryNumber: { contains: term, mode: 'insensitive' } },
+            { studentFirstName: { contains: term, mode: 'insensitive' } },
+            { studentLastName: { contains: term, mode: 'insensitive' } },
+            { parentName: { contains: term, mode: 'insensitive' } },
+            { phone: { contains: term } },
+          ],
+        },
+        take,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          enquiryNumber: true,
+          studentFirstName: true,
+          studentLastName: true,
+          seekingClass: true,
+          status: true,
+        },
+      });
+
+      return enquiries.map((enquiry) => ({
+        type: 'admission',
+        id: enquiry.id,
+        title: name([enquiry.studentFirstName, enquiry.studentLastName]),
+        subtitle: [enquiry.enquiryNumber, `Seeking ${enquiry.seekingClass}`].join(' • '),
+        url: `/admissions?q=${encodeURIComponent(enquiry.enquiryNumber)}`,
+        badge: enquiry.status,
+      }));
+    },
+  },
+
+  {
+    type: 'route',
+    label: 'Transport routes',
+    permission: PERMISSIONS.TRANSPORT_VIEW,
+    module: MODULES.TRANSPORT,
+    async search(prisma, schoolId, term, take) {
+      const routes = await prisma.transportRoute.findMany({
+        where: {
+          schoolId,
+          OR: [
+            { name: { contains: term, mode: 'insensitive' } },
+            { code: { contains: term, mode: 'insensitive' } },
+          ],
+        },
+        take,
+        orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          isActive: true,
+          vehicle: { select: { registrationNumber: true } },
+          _count: { select: { stops: true, assignments: true } },
+        },
+      });
+
+      return routes.map((route) => ({
+        type: 'route',
+        id: route.id,
+        title: route.name,
+        subtitle: [
+          route.code,
+          route.vehicle?.registrationNumber,
+          `${route._count.stops} stops`,
+          `${route._count.assignments} students`,
+        ]
+          .filter(Boolean)
+          .join(' • '),
+        url: `/transport`,
+        badge: route.isActive ? undefined : 'Inactive',
+      }));
+    },
+  },
+
+  {
+    type: 'certificate',
+    label: 'Certificates',
+    permission: PERMISSIONS.CERTIFICATES_GENERATE,
+    module: MODULES.CERTIFICATES,
+    async search(prisma, schoolId, term, take) {
+      const certificates = await prisma.certificate.findMany({
+        where: {
+          schoolId,
+          OR: [
+            { certificateNumber: { contains: term, mode: 'insensitive' } },
+            { student: { firstName: { contains: term, mode: 'insensitive' } } },
+            { student: { lastName: { contains: term, mode: 'insensitive' } } },
+            { student: { admissionNumber: { contains: term, mode: 'insensitive' } } },
+          ],
+        },
+        take,
+        orderBy: { issuedOn: 'desc' },
+        select: {
+          id: true,
+          certificateNumber: true,
+          type: true,
+          isRevoked: true,
+          student: { select: { firstName: true, lastName: true } },
+        },
+      });
+
+      return certificates.map((certificate) => ({
+        type: 'certificate',
+        id: certificate.id,
+        title: certificate.certificateNumber,
+        subtitle: [
+          certificate.type.replace(/_/g, ' '),
+          certificate.student
+            ? name([certificate.student.firstName, certificate.student.lastName])
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' • '),
+        url: `/certificates?q=${encodeURIComponent(certificate.certificateNumber)}`,
+        badge: certificate.isRevoked ? 'Revoked' : undefined,
       }));
     },
   },

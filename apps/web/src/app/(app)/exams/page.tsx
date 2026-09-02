@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
 import { BookOpen, Lock, LockOpen, Pencil, Plus, Send, Trash2 } from 'lucide-react';
 import { humanise } from '@erp/shared-types';
 import { api } from '@/lib/api';
@@ -53,6 +54,7 @@ const EXAM_STATUSES = ['DRAFT', 'SCHEDULED', 'ONGOING', 'COMPLETED', 'PUBLISHED'
 const EXAM_QUERIES = [['exams']];
 
 export default function ExamsPage() {
+  const router = useRouter();
   const canManage = useAuthStore(
     (state) => state.user?.isSuperAdmin || state.user?.permissions.includes('exams.update'),
   );
@@ -157,7 +159,10 @@ export default function ExamsPage() {
       header: '',
       width: '1%',
       cell: (row) => (
-        <div className="flex items-center justify-end gap-1">
+        <div
+          className="flex items-center justify-end gap-1"
+          onClick={(event) => event.stopPropagation()}
+        >
           {canPublish && !row.publishedAt ? (
             <Button
               size="xs"
@@ -240,6 +245,7 @@ export default function ExamsPage() {
         columns={columns}
         rows={list.items}
         rowKey={(row) => row.id}
+        onRowClick={(row) => router.push(`/exams/${row.id}`)}
         isLoading={list.isLoading}
         error={list.error}
         onRetry={() => list.refetch()}
@@ -264,7 +270,12 @@ export default function ExamsPage() {
         }
       />
 
-      {creating ? <ExamFormDialog onClose={() => setCreating(false)} /> : null}
+      {creating ? (
+        <ExamFormDialog
+          onClose={() => setCreating(false)}
+          onCreated={(id) => router.push(`/exams/${id}`)}
+        />
+      ) : null}
       {editing ? <ExamFormDialog exam={editing} onClose={() => setEditing(null)} /> : null}
       {publishing ? (
         <PublishResultsDialog exam={publishing} onClose={() => setPublishing(null)} />
@@ -292,7 +303,15 @@ export default function ExamsPage() {
 // Schedule and edit
 // ---------------------------------------------------------------------------
 
-function ExamFormDialog({ exam, onClose }: { exam?: ExamRow; onClose: () => void }) {
+function ExamFormDialog({
+  exam,
+  onClose,
+  onCreated,
+}: {
+  exam?: ExamRow;
+  onClose: () => void;
+  onCreated?: (id: string) => void;
+}) {
   const isEdit = Boolean(exam);
 
   const [name, setName] = React.useState(exam?.name ?? '');
@@ -331,6 +350,9 @@ function ExamFormDialog({ exam, onClose }: { exam?: ExamRow; onClose: () => void
       isValid={name.trim().length > 0 && (isEdit || code.trim().length > 0) && datesOk}
       successMessage={isEdit ? 'Examination updated' : 'Examination scheduled'}
       invalidates={EXAM_QUERIES}
+      onSaved={(result: { id?: string }) => {
+        if (!isEdit && result?.id && onCreated) onCreated(result.id);
+      }}
       submit={(values) => {
         const common = {
           name: values.name.trim(),

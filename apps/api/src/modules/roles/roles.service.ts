@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnApplicationBootstrap } from '@nestjs/common';
 import { AuditAction, Prisma, RoleType } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AppLogger } from '../../common/logger/app-logger.service';
@@ -32,7 +32,7 @@ import type {
 const PLATFORM_ONLY_PREFIX = 'platform.';
 
 @Injectable()
-export class RolesService {
+export class RolesService implements OnApplicationBootstrap {
   private readonly log: AppLogger;
 
   constructor(
@@ -41,6 +41,25 @@ export class RolesService {
     logger: AppLogger,
   ) {
     this.log = logger.child('RolesService');
+  }
+
+  /**
+   * Keeps the `permissions` table in step with the code catalogue on every
+   * boot. Without this, a permission added in code but never seeded makes
+   * "reset role to defaults" (and any grant that references it) fail at
+   * runtime with an "unknown permission" error.
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    try {
+      const { created, total } = await this.syncPermissionCatalogue();
+      if (created > 0) {
+        this.log.info('Permission catalogue synchronised', { created, total });
+      }
+    } catch (error) {
+      // A sync failure must not stop the server from starting; the catalogue
+      // simply stays as it was until the next boot.
+      this.log.error('Could not synchronise the permission catalogue', error as Error);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -263,6 +282,11 @@ export class RolesService {
       select: { id: true, type: true, name: true },
     });
     if (!role) throw new NotFoundError('Role');
+
+    // The default set is defined in code; make sure every key it names exists
+    // in the catalogue before applying it, so a freshly-added permission does
+    // not make the reset fail.
+    await this.syncPermissionCatalogue();
 
     const defaults = ROLE_DEFAULT_PERMISSIONS[role.type] ?? [];
     return this.setRolePermissions(schoolId, roleId, { permissions: [...defaults] });

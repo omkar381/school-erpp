@@ -44,7 +44,7 @@ export function FormModal<TValues, TResult>({
   /** Blocks the submit button while the form is incomplete. */
   isValid?: boolean;
   submit: (values: TValues) => Promise<TResult>;
-  successMessage: string;
+  successMessage: string | ((result: TResult) => string);
   invalidates?: QueryKey[];
   onSaved?: (result: TResult) => void;
   /** Rendered inside the modal body, given any per-field errors from the API. */

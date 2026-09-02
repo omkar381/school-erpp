@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Award, BadgeCheck, Ban, Download, IdCard, Plus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -99,9 +100,11 @@ export default function CertificatesPage() {
     staleTime: 5 * 60_000,
   });
 
+  const initialSearch = useSearchParams().get('q') ?? undefined;
   const list = useListQuery<CertificateRow>('certificates', '/certificates', {
     initialSortBy: 'issuedOn',
     initialSortOrder: 'desc',
+    initialSearch,
   });
 
   const cards = useListQuery<IdCardRow>('id-cards', '/certificates/id-cards/list', {

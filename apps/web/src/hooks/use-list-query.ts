@@ -30,6 +30,8 @@ export function useListQuery<T>(
     initialSortBy?: string;
     initialSortOrder?: 'asc' | 'desc';
     initialFilters?: Record<string, string | undefined>;
+    /** Seeds the search box, e.g. from a `?q=` deep link. */
+    initialSearch?: string;
     /** Extra parameters that are not user-editable filters. */
     extraParams?: Record<string, unknown>;
     enabled?: boolean;
@@ -38,13 +40,13 @@ export function useListQuery<T>(
   const [state, setState] = React.useState<ListState>({
     page: 1,
     limit: options.initialLimit ?? 25,
-    search: '',
+    search: options.initialSearch ?? '',
     sortBy: options.initialSortBy,
     sortOrder: options.initialSortOrder ?? 'desc',
     filters: options.initialFilters ?? {},
   });
 
-  const [debouncedSearch, setDebouncedSearch] = React.useState('');
+  const [debouncedSearch, setDebouncedSearch] = React.useState(options.initialSearch?.trim() ?? '');
 
   React.useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(state.search.trim()), 300);
